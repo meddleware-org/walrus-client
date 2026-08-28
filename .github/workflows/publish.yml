@@ -1,0 +1,41 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    name: Publish to npm (@meddleware/walrus-client)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Test
+        run: npm test
+
+      - name: Publish to npmjs (provenance via OIDC, idempotent)
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://registry.npmjs.org/@meddleware%2fwalrus-client/${VERSION}")
+          if [ "$HTTP" = "200" ]; then
+            echo "::notice::v${VERSION} already published to npmjs — skipping"
+          else
+            npm publish --provenance
+          fi

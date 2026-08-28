@@ -1,0 +1,84 @@
+import { describe, it, expect, vi } from 'vitest'
+import {
+  extendBlobLifetime,
+  extendBlobLifetimeTransaction,
+  setBlobAttributes,
+  setBlobAttributesTransaction,
+  readBlobAttributes,
+} from '../src/manage.js'
+
+function fakeClient() {
+  const calls: Record<string, any[]> = {}
+  const record = (k: string) => (arg: any) => {
+    ;(calls[k] ||= []).push(arg)
+    if (k === 'readBlobAttributes') return { color: 'blue' }
+    // execute* methods sign and return a digest; the plain *Transaction
+    // builders return an unsigned transaction object.
+    if (k.startsWith('execute')) return { digest: `DIGEST_${k}` }
+    return { __tx: k }
+  }
+  const client = {
+    walrus: {
+      executeExtendBlobTransaction: vi.fn(record('executeExtendBlobTransaction')),
+      extendBlobTransaction: vi.fn(record('extendBlobTransaction')),
+      executeWriteBlobAttributesTransaction: vi.fn(record('executeWriteBlobAttributesTransaction')),
+      writeBlobAttributesTransaction: vi.fn(record('writeBlobAttributesTransaction')),
+      readBlobAttributes: vi.fn(record('readBlobAttributes')),
+    },
+  }
+  return { client: client as any, calls }
+}
+
+const signer = { __signer: true } as any
+
+describe('extendBlobLifetime', () => {
+  it('threads ExtendOptions (epochs form) and returns the digest', async () => {
+    const { client, calls } = fakeClient()
+    const res = await extendBlobLifetime(client, 'OBJ', signer, { epochs: 10 })
+    expect(calls.executeExtendBlobTransaction[0]).toMatchObject({
+      blobObjectId: 'OBJ',
+      signer,
+      epochs: 10,
+    })
+    expect(res).toEqual({ digest: 'DIGEST_executeExtendBlobTransaction' })
+  })
+
+  it('threads ExtendOptions (endEpoch form)', async () => {
+    const { client, calls } = fakeClient()
+    await extendBlobLifetime(client, 'OBJ', signer, { endEpoch: 500 })
+    expect(calls.executeExtendBlobTransaction[0]).toMatchObject({ endEpoch: 500 })
+  })
+})
+
+describe('extendBlobLifetimeTransaction', () => {
+  it('returns an unsigned transaction (wallet-safe)', () => {
+    const { client } = fakeClient()
+    const tx = extendBlobLifetimeTransaction(client, 'OBJ', { epochs: 3 })
+    expect(tx).toEqual({ __tx: 'extendBlobTransaction' })
+  })
+})
+
+describe('setBlobAttributes / readBlobAttributes', () => {
+  it('executes attribute write with signer and returns digest', async () => {
+    const { client, calls } = fakeClient()
+    const res = await setBlobAttributes(client, 'OBJ', signer, { color: 'blue', old: null })
+    expect(calls.executeWriteBlobAttributesTransaction[0]).toMatchObject({
+      blobObjectId: 'OBJ',
+      signer,
+      attributes: { color: 'blue', old: null },
+    })
+    expect(res).toEqual({ digest: 'DIGEST_executeWriteBlobAttributesTransaction' })
+  })
+
+  it('setBlobAttributesTransaction returns an unsigned tx', () => {
+    const { client } = fakeClient()
+    const tx = setBlobAttributesTransaction(client, 'OBJ', { a: 'b' })
+    expect(tx).toEqual({ __tx: 'writeBlobAttributesTransaction' })
+  })
+
+  it('readBlobAttributes returns the attribute map', async () => {
+    const { client } = fakeClient()
+    const attrs = await readBlobAttributes(client, 'OBJ')
+    expect(attrs).toEqual({ color: 'blue' })
+  })
+})
