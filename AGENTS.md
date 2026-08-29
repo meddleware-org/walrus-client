@@ -74,8 +74,15 @@ Checklist before publishing a new version:
 4. Verify `npm test` passes
 5. Confirm `@mysten/sui` and `@mysten/walrus` dep versions match the target Sui/Walrus testnet release
 
-## Relationship to vault monorepo
+## Consumers
 
-Canonical vault location: `blockchain/sui/packages/walrus-relay-ui/` (relay UI) and `blockchain/sui/packages/nft-gate-client-sui/` (nft-gate client). This standalone package is the published form of the Walrus client layer only. When making breaking changes, coordinate with:
-- `apps/walrus-relay-ui` — primary consumer (relay upload/manage flow)
-- `apps/token-deployer-sui` — secondary consumer (token icon upload)
+This package is the published Walrus storage/client layer. When making breaking changes,
+coordinate with its downstream consumers:
+
+- [`@meddleware/walrus-relay`](https://github.com/meddleware-org/walrus-relay) — relay UI library
+  (wires `createWalrusClient` / `createBlobUploadFlow` into the upload widget)
+- [`@meddleware/walrus-ui`](https://github.com/meddleware-org/walrus-ui) — standalone uploader app
+- `token-deployer-sui` — token icon upload
+
+Its own upstream dependency is [`@meddleware/nft-gate-client`](https://github.com/meddleware-org/nft-gate-client)
+(the access-proof wire format re-exported from `src/access.ts`).

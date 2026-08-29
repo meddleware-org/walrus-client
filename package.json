@@ -1,6 +1,6 @@
 {
   "name": "@meddleware/walrus-client",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "description": "Walrus decentralised storage client and asset management utilities for Sui applications.",
   "author": "MeddleWare <meddleware@proton.me>",
@@ -9,7 +9,12 @@
     "type": "git",
     "url": "git+https://github.com/meddleware-org/walrus-client.git"
   },
-  "keywords": ["walrus", "sui", "decentralised-storage", "web3"],
+  "keywords": [
+    "walrus",
+    "sui",
+    "decentralised-storage",
+    "web3"
+  ],
   "files": [
     "src",
     "CHANGELOG.md"
@@ -24,7 +29,8 @@
   },
   "dependencies": {
     "@mysten/sui": "~2.17.0",
-    "@mysten/walrus": "~1.1.7"
+    "@mysten/walrus": "~1.1.7",
+    "@meddleware/nft-gate-client": "~0.0.3"
   },
   "devDependencies": {
     "@types/node": "~24.12.2",

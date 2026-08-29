@@ -3,6 +3,7 @@ import { WalrusFile } from '@mysten/walrus'
 import type { Signer } from '@mysten/sui/cryptography'
 import type { createWalrusClient } from './client.js'
 
+/** The return type of {@link createWalrusClient}. */
 export type WalrusClient = ReturnType<typeof createWalrusClient>
 
 /**
@@ -23,17 +24,30 @@ export const MAX_SINGLE_RESERVATION_EPOCHS = 53
  */
 export const LONG_TERM_EPOCHS = 200
 
+/** Options shared by all upload helpers. */
 export type UploadOptions = {
+  /** Storage epochs to reserve (default: {@link MAX_SINGLE_RESERVATION_EPOCHS}). */
   epochs?: number
+  /** Whether the blob can be deleted by its owner (default false). */
   deletable?: boolean
+  /** Arbitrary key-value metadata tags stored with the blob. */
   tags?: Record<string, string>
 }
 
+/** The object IDs returned after a successful upload. */
 export type UploadResult = {
+  /** Walrus content-addressed blob ID. */
   blobId: string
+  /** On-chain Walrus blob object ID. */
   blobObjectId: string
 }
 
+/**
+ * Upload raw bytes as a Walrus quilt (file bundle). Use this from Node.js with a keypair
+ * signer; use {@link createUploadFlow} in the browser for wallet-popup-safe signing.
+ *
+ * @throws {Error} if the Walrus write transaction fails or the signer rejects.
+ */
 export async function uploadBytes(
   client: WalrusClient,
   contents: Uint8Array,
@@ -53,7 +67,11 @@ export async function uploadBytes(
   return { blobId: result.blobId, blobObjectId: result.id }
 }
 
-// Node.js only — reads a local file before uploading
+/**
+ * Read a local file and upload it as a Walrus quilt. Node.js only.
+ *
+ * @throws {Error} if the file cannot be read or the upload fails.
+ */
 export async function uploadLocalFile(
   client: WalrusClient,
   filePath: string,
@@ -65,7 +83,10 @@ export async function uploadLocalFile(
   return uploadBytes(client, new Uint8Array(contents), identifier, signer, options)
 }
 
-// Browser — returns a multi-step flow for wallet-popup-safe signing
+/**
+ * Begin a multi-step quilt upload flow suitable for browser wallet signing.
+ * The caller drives the flow: encode → register (wallet signs) → upload → certify (wallet signs).
+ */
 export function createUploadFlow(
   client: WalrusClient,
   contents: Uint8Array,
@@ -83,7 +104,12 @@ export function createUploadFlow(
 // wallets/explorers), use a RAW blob: `GET /v1/blobs/<blobId>` returns the exact
 // bytes. See `walrusBlobUrl()` in ./client.
 
-// Node.js — one-shot raw-blob upload with a keypair `Signer`.
+/**
+ * Upload raw bytes as a Walrus raw blob (served directly at `/v1/blobs/<blobId>`).
+ * Use this for assets that must be URL-addressable (e.g. token icons). Node.js only.
+ *
+ * @throws {Error} if the Walrus write transaction fails or the signer rejects.
+ */
 export async function uploadImageBytes(
   client: WalrusClient,
   contents: Uint8Array,
@@ -100,12 +126,18 @@ export async function uploadImageBytes(
   return { blobId: res.blobId, blobObjectId: res.blobObject.id }
 }
 
-// Browser — multi-step raw-blob flow for wallet-popup-safe signing. Drive it as:
-//   await flow.encode()
-//   const regTx = flow.register({ owner, epochs, deletable }) // wallet signs+executes
-//   await flow.upload({ digest })                              // digest of regTx
-//   const certTx = flow.certify()                              // wallet signs+executes
-//   const { blobId } = await flow.getBlob()                    // -> walrusBlobUrl(...)
+/**
+ * Begin a multi-step raw-blob upload flow suitable for browser wallet signing.
+ *
+ * Drive the returned flow:
+ * ```ts
+ * await flow.encode()
+ * const regTx = flow.register({ owner, epochs, deletable }) // wallet signs + executes
+ * await flow.upload({ digest })                              // digest of regTx
+ * const certTx = flow.certify()                              // wallet signs + executes
+ * const { blobId } = await flow.getBlob()                   // use walrusBlobUrl(network, blobId)
+ * ```
+ */
 export function createBlobUploadFlow(client: WalrusClient, contents: Uint8Array) {
   return client.walrus.writeBlobFlow({ blob: contents })
 }

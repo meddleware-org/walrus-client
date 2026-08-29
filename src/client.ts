@@ -3,8 +3,10 @@ import { walrus, TESTNET_WALRUS_PACKAGE_CONFIG, MAINNET_WALRUS_PACKAGE_CONFIG } 
 
 export { TESTNET_WALRUS_PACKAGE_CONFIG, MAINNET_WALRUS_PACKAGE_CONFIG }
 
+/** Supported Walrus network environments. */
 export type WalrusNetwork = 'testnet' | 'mainnet'
 
+/** Default Sui full-node RPC URLs, keyed by network. */
 export const DEFAULT_RPC_URLS: Record<WalrusNetwork, string> = {
   testnet: 'https://fullnode.testnet.sui.io:443',
   mainnet: 'https://fullnode.mainnet.sui.io:443',
@@ -40,27 +42,51 @@ export function walrusBlobUrl(
   return `${host}/v1/blobs/${blobId}`
 }
 
+/** Return the Walrus on-chain package config for the given network. */
 export function getWalrusPackageConfig(network: WalrusNetwork) {
   return network === 'mainnet' ? MAINNET_WALRUS_PACKAGE_CONFIG : TESTNET_WALRUS_PACKAGE_CONFIG
 }
 
+/** Options accepted by {@link createWalrusClient}. */
 export type CreateWalrusClientOptions = {
+  /** Target network (default `'testnet'`). */
   network?: WalrusNetwork
   /** Override the Sui JSON-RPC/gRPC fullnode URL. Defaults to the public Mysten endpoint for the network. */
   rpcUrl?: string
+  /** Optional WASM bundle URL for the Walrus WASM client. */
   wasmUrl?: string
+  /**
+   * Upload relay host URL. Defaults to the public Mysten relay for the network.
+   * Operators running their own relay (e.g. Meddleware's NFT-gated relay) should
+   * pass their relay URL here alongside `uploadRelayAuthToken`.
+   */
   uploadRelayHost?: string
+  /**
+   * Bearer token for the upload relay `Authorization` header. Obtain via
+   * `createRelayAccessToken` from the `access` module when the relay is NFT-gated.
+   */
   uploadRelayAuthToken?: string
+  /**
+   * Maximum tip payment to the upload relay in MIST (default 1,000,000 = 0.001 SUI).
+   * The relay may request less; this cap prevents the client from overpaying.
+   */
   uploadRelayMaxTipMist?: number
   /**
    * When true, build a client with NO upload relay (direct-to-storage-node).
-   * Overrides `uploadRelayHost` and the default MeddleWare relay fallback, so a
-   * deployer is never hard-blocked on relay infra. Uploads then talk directly to
-   * Walrus storage nodes.
+   * Overrides `uploadRelayHost` and the default relay fallback. Useful for
+   * server-side Node.js scripts where relay infra is unnecessary.
    */
   disableUploadRelay?: boolean
 }
 
+/**
+ * Create a Walrus client pre-configured for the given network and relay options.
+ *
+ * @example
+ * ```ts
+ * const client = createWalrusClient({ network: 'testnet' })
+ * ```
+ */
 export function createWalrusClient({
   network = 'testnet',
   rpcUrl,
