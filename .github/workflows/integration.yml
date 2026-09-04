@@ -1,0 +1,62 @@
+name: Integration (localnet)
+
+# Opt-in, heavy localnet e2e — kept off the PR path so normal CI stays fast. Runs on demand and
+# nightly. Brings up the Docker-Compose Walrus testbed (localnet/) and runs the real blob-lifecycle
+# suite against it. See localnet/README.md.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC nightly
+
+jobs:
+  localnet:
+    name: walrus-client localnet suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout walrus-client (into repos/walrus-client)
+        uses: actions/checkout@v4
+        with:
+          path: repos/walrus-client
+
+      - name: Checkout access-gate-sui (sibling, for the localnet gate deploy)
+        uses: actions/checkout@v4
+        with:
+          repository: meddleware-org/access-gate-sui
+          ref: ${{ vars.ACCESS_GATE_REF || 'main' }}
+          path: repos/access-gate-sui
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install sui CLI (suiup)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/suiup" install sui@testnet --yes || "$HOME/.local/bin/suiup" install sui@testnet
+          sui client new-env --alias localnet --rpc http://127.0.0.1:9000 || true
+          sui client switch --env localnet || true
+
+      - name: Bring up the localnet testbed
+        working-directory: repos/walrus-client/localnet
+        run: bash scripts/up.sh
+
+      - name: Bootstrap localnet (deploy + harvest + .env.localnet)
+        working-directory: repos/walrus-client/localnet
+        run: bash scripts/bootstrap-localnet.sh
+
+      - name: Install deps
+        working-directory: repos/walrus-client
+        run: npm install
+
+      - name: Run localnet integration suite
+        working-directory: repos/walrus-client
+        run: |
+          set -a && source localnet/.env.localnet && set +a
+          npm run test:integration
+
+      - name: Tear down
+        if: always()
+        working-directory: repos/walrus-client/localnet
+        run: bash scripts/down.sh || true

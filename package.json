@@ -1,6 +1,6 @@
 {
   "name": "@meddleware/walrus-client",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "description": "Walrus decentralised storage client and asset management utilities for Sui applications.",
   "author": "MeddleWare <meddleware@proton.me>",
@@ -25,7 +25,8 @@
   "scripts": {
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@mysten/sui": "~2.17.0",

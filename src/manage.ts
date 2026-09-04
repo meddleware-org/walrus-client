@@ -1,8 +1,22 @@
 import type { Signer } from '@mysten/sui/cryptography'
+import { Transaction } from '@mysten/sui/transactions'
 import type { createWalrusClient } from './client.js'
 
 /** A Walrus-extended Sui client, as returned by {@link createWalrusClient}. */
 export type WalrusClient = ReturnType<typeof createWalrusClient>
+
+/**
+ * True when `err` is a Sui "object / dynamic field not found" error. A blob with no attributes yet
+ * has no `metadata` dynamic field, so a lookup of it fails this way. `@mysten/sui`'s `ObjectError`
+ * is not exported, so we duck-type on its `code` (`'notExists'` for the derived field object,
+ * `'dynamicFieldNotFound'` for the parent) with a message fallback.
+ */
+function isMissingFieldError(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code
+  if (code === 'notExists' || code === 'dynamicFieldNotFound') return true
+  const msg = err instanceof Error ? err.message : ''
+  return /does not exist|Dynamic field not found/.test(msg)
+}
 
 /**
  * How to extend a blob's storage: either add `epochs` more, or extend up to an
@@ -69,12 +83,29 @@ export async function setBlobAttributes(
   signer: Signer,
   attributes: Record<string, string | null>,
 ): Promise<{ digest: string }> {
-  const result = await client.walrus.executeWriteBlobAttributesTransaction({
-    blobObjectId,
-    signer,
-    attributes,
-  })
-  return { digest: result.digest }
+  try {
+    const result = await client.walrus.executeWriteBlobAttributesTransaction({
+      blobObjectId,
+      signer,
+      attributes,
+    })
+    return { digest: result.digest }
+  } catch (err) {
+    // First write on a blob with no `metadata` dynamic field: the SDK's writeBlobAttributes reads the
+    // existing attributes to compute a diff, which throws here (the field doesn't exist yet). Rebuild
+    // passing `blobObject` instead of `blobObjectId` — that path skips the read and adds the metadata
+    // struct itself (null-valued keys are simply skipped, correct for a fresh blob). The SDK still
+    // signs, executes, and waits internally.
+    if (!isMissingFieldError(err)) throw err
+    const tx = new Transaction()
+    const result = await client.walrus.executeWriteBlobAttributesTransaction({
+      transaction: tx,
+      blobObject: tx.object(blobObjectId),
+      signer,
+      attributes,
+    })
+    return { digest: result.digest }
+  }
 }
 
 /**
@@ -105,5 +136,12 @@ export async function readBlobAttributes(
   client: WalrusClient,
   blobObjectId: string,
 ): Promise<Record<string, string> | null> {
-  return client.walrus.readBlobAttributes({ blobObjectId })
+  try {
+    return await client.walrus.readBlobAttributes({ blobObjectId })
+  } catch (err) {
+    // A blob with no attributes has no `metadata` dynamic field; the SDK throws rather than returning
+    // null. Honour this function's documented contract by returning null for that case.
+    if (isMissingFieldError(err)) return null
+    throw err
+  }
 }

@@ -1,0 +1,64 @@
+# Walrus upload-relay for the localnet harness. Layers on top of the upstream local-testbed network
+# (docker/local-testbed) so it can reach the localnet Sui fullnode + walrus storage nodes by their
+# in-network hostnames. Brought up by scripts/up.sh AFTER the testbed is healthy.
+#
+# The relay talks to whichever network its client config defines: we mount the harvested
+# generated/client_config.yaml (which carries a `localnet` context) and select it with --context.
+services:
+  walrus-upload-relay:
+    image: mysten/walrus-upload-relay:${WALRUS_RELAY_TAG:-testnet}
+    # Join the testbed's compose network so `sui-localnet` / storage-node hostnames resolve.
+    # NOTE: the external network name must match the upstream local-testbed project network;
+    # up.sh discovers it and exports LOCAL_TESTBED_NETWORK before invoking compose.
+    networks:
+      - testbed
+    ports:
+      - "57391:57391"   # relay HTTP (LN_RELAY_HOST)
+      - "9184:9184"     # prometheus metrics
+    volumes:
+      - ./generated/client_config.yaml:/etc/walrus/client_config.yaml:ro
+      - ./config/relay.yaml:/etc/walrus/relay.yaml:ro
+    command:
+      - "--context"
+      - "localnet"
+      - "--walrus-config"
+      - "/etc/walrus/client_config.yaml"
+      - "--relay-config"
+      - "/etc/walrus/relay.yaml"
+      - "--server-address"
+      - "0.0.0.0:57391"
+      - "--metrics-address"
+      - "0.0.0.0:9184"
+
+  # Read path: a `walrus aggregator` daemon (read-only — no WAL/wallet needed). Serves GET
+  # /v1/blobs/<id> on the host at 57392. Uses the same version-matched image as the testbed nodes so
+  # its reconstruction logic matches theirs.
+  walrus-aggregator:
+    image: ${WALRUS_IMAGE_NAME:-mysten/walrus-service:testnet-v1.55.2}
+    networks:
+      - testbed
+    ports:
+      - "57392:9000"    # aggregator HTTP (LN_AGGREGATOR_HOST)
+      - "27182:27182"   # prometheus metrics
+    volumes:
+      - ./generated/client_config.yaml:/etc/walrus/client_config.yaml:ro
+    command:
+      - "/opt/walrus/bin/walrus"
+      - "aggregator"
+      - "--config"
+      - "/etc/walrus/client_config.yaml"
+      - "--context"
+      - "localnet"
+      - "--rpc-url"
+      - "http://sui-localnet:9000"
+      - "--bind-address"
+      - "0.0.0.0:9000"
+      - "--metrics-address"
+      - "0.0.0.0:27182"
+
+networks:
+  testbed:
+    # The upstream local-testbed compose creates `local-testbed_testbed-network`. scripts/bootstrap
+    # auto-detects it and exports LOCAL_TESTBED_NETWORK; this default matches the standard project name.
+    name: ${LOCAL_TESTBED_NETWORK:-local-testbed_testbed-network}
+    external: true

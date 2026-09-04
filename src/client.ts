@@ -1,10 +1,18 @@
-import { SuiGrpcClient } from '@mysten/sui/grpc'
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc'
 import { walrus, TESTNET_WALRUS_PACKAGE_CONFIG, MAINNET_WALRUS_PACKAGE_CONFIG } from '@mysten/walrus'
+import type { WalrusPackageConfig } from '@mysten/walrus'
 
 export { TESTNET_WALRUS_PACKAGE_CONFIG, MAINNET_WALRUS_PACKAGE_CONFIG }
+export type { WalrusPackageConfig }
 
 /** Supported Walrus network environments. */
 export type WalrusNetwork = 'testnet' | 'mainnet'
+
+/**
+ * Network label accepted by {@link createWalrusClient}. `'localnet'` targets a local testbed and
+ * REQUIRES a caller-supplied `walrusPackageConfig` + `rpcUrl` (the SDK bundles no localnet config).
+ */
+export type WalrusClientNetwork = WalrusNetwork | 'localnet'
 
 /** Default Sui full-node RPC URLs, keyed by network. */
 export const DEFAULT_RPC_URLS: Record<WalrusNetwork, string> = {
@@ -49,10 +57,23 @@ export function getWalrusPackageConfig(network: WalrusNetwork) {
 
 /** Options accepted by {@link createWalrusClient}. */
 export type CreateWalrusClientOptions = {
-  /** Target network (default `'testnet'`). */
-  network?: WalrusNetwork
+  /** Target network (default `'testnet'`). Use `'localnet'` with `walrusPackageConfig` + `rpcUrl`. */
+  network?: WalrusClientNetwork
   /** Override the Sui JSON-RPC/gRPC fullnode URL. Defaults to the public Mysten endpoint for the network. */
   rpcUrl?: string
+  /**
+   * Custom Walrus on-chain package config (system object / staking pool / exchange ids). Supply this
+   * to target a network the SDK does not bundle — e.g. a localnet testbed whose ids are harvested at
+   * deploy time. When set it is passed to the Walrus extension in place of the bundled network config.
+   * **Caller-supplied only** — never hardcode addresses here (keeps the "no hardcoded package
+   * addresses" invariant intact; the value is discovered at runtime, e.g. from `.env.localnet`).
+   */
+  walrusPackageConfig?: WalrusPackageConfig
+  /**
+   * URL scheme used when contacting storage nodes. Defaults to `'https'`. Set `'http'` for a localnet
+   * testbed whose storage nodes do not terminate TLS.
+   */
+  storageNodeUrlScheme?: 'http' | 'https'
   /** Optional WASM bundle URL for the Walrus WASM client. */
   wasmUrl?: string
   /**
@@ -90,20 +111,36 @@ export type CreateWalrusClientOptions = {
 export function createWalrusClient({
   network = 'testnet',
   rpcUrl,
+  walrusPackageConfig,
+  storageNodeUrlScheme,
   wasmUrl,
   uploadRelayHost,
   uploadRelayAuthToken,
   uploadRelayMaxTipMist = 1_000_000,
   disableUploadRelay = false,
 }: CreateWalrusClientOptions = {}) {
-  const baseUrl = rpcUrl ?? DEFAULT_RPC_URLS[network]
+  // localnet has no bundled RPC/relay default — the caller must supply rpcUrl (and, for uploads,
+  // uploadRelayHost). Fall back to the public defaults only for the two bundled networks.
+  const bundled = network === 'localnet' ? undefined : network
+  const baseUrl = rpcUrl ?? (bundled ? DEFAULT_RPC_URLS[bundled] : undefined)
+  if (!baseUrl) throw new Error("createWalrusClient: 'localnet' requires an explicit rpcUrl.")
   // disableUploadRelay wins over both an explicit host and the default fallback.
-  const relayHost = disableUploadRelay ? undefined : (uploadRelayHost ?? PUBLIC_UPLOAD_RELAY_HOSTS[network])
-  return new SuiGrpcClient({
-    network,
-    baseUrl,
+  const defaultRelay = bundled ? PUBLIC_UPLOAD_RELAY_HOSTS[bundled] : undefined
+  const relayHost = disableUploadRelay ? undefined : (uploadRelayHost ?? defaultRelay)
+  // The walrus() extension only accepts a Sui client whose network is 'mainnet' | 'testnet' (it throws
+  // "Walrus client only supports mainnet and testnet" otherwise). For localnet we label the gRPC
+  // client 'testnet' — harmless, since the real contract ids come from walrusPackageConfig and the RPC
+  // endpoint from baseUrl; the label is never used for resolution when packageConfig is supplied.
+  const suiNetwork: WalrusNetwork = bundled ?? 'testnet'
+  return new SuiJsonRpcClient({
+    network: suiNetwork,
+    url: baseUrl,
   }).$extend(
     walrus({
+      // A caller-supplied packageConfig targets a network the SDK doesn't bundle (e.g. localnet);
+      // otherwise the Walrus extension reads the network from the gRPC client above.
+      ...(walrusPackageConfig ? { packageConfig: walrusPackageConfig } : {}),
+      ...(storageNodeUrlScheme ? { storageNodeUrlScheme } : {}),
       ...(wasmUrl ? { wasmUrl } : {}),
       ...(relayHost
         ? {

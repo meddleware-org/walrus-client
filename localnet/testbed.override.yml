@@ -1,0 +1,24 @@
+# Compose override layered on the upstream docker/local-testbed. The upstream compose exposes NO host
+# ports (everything sits on the internal 10.0.0.0/24 bridge), so host-run tests + our relay can't
+# reach it. This override publishes the Sui fullnode + faucet to the host. Always applied by
+# scripts/up.sh via `docker compose -f <upstream> -f testbed.override.yml`.
+#
+# NOTE: the storage nodes advertise their INTERNAL addresses (10.0.0.10-13) in the on-chain committee,
+# so a host process cannot read/write blobs directly by those addresses. Host-driven blob I/O must go
+# through a publisher/aggregator (or our upload-relay) running ON this network — see relay.compose.yml
+# and the aggregator/publisher sidecars (added once the base testbed deploys cleanly).
+services:
+  sui-localnet:
+    ports:
+      - "9000:9000" # JSON-RPC / gRPC
+      - "9123:9123" # faucet
+
+  # NOTE: walrus-deploy ignores /root/.sui/sui_config — it always generates its own Sui keypair and
+  # stores it in the deploy-outputs volume at /opt/walrus/outputs/sui_admin.yaml. WAL is minted to
+  # that generated address. bootstrap-localnet.sh reads sui_admin.yaml from the volume, extracts the
+  # admin key, and transfers WAL to the test address. This mount is therefore harmless but has no
+  # effect on WAL ownership. MW_DEPLOYER_RUNTIME_CFG is kept in the .env for compose to interpolate.
+  walrus-deploy:
+    volumes:
+      # Absolute path required: compose resolves relative paths against the FIRST compose file's dir.
+      - ${MW_DEPLOYER_RUNTIME_CFG:?source scripts/lib.sh first}:/root/.sui/sui_config

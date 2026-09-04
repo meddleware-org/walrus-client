@@ -1,0 +1,16 @@
+# Deploy-patch override — applied by default (MW_PATCH_DEPLOY=1 in lib.sh). Remounts our patched
+# deploy script and version-matched contracts. Applied by default because Docker image tags are
+# mutable: testnet-v1.55.2 drifted from --contract-dir to --contract-path between sessions. Our
+# patched script uses --contract-path (current binary API) and mounts pinned checkout contracts to
+# avoid walrus-docs-latest ICE. Set MW_PATCH_DEPLOY=0 only when testing a verified, internally-
+# consistent upstream image+script pair.
+#
+# MW_DEPLOY_SCRIPT is an ABSOLUTE path exported by scripts/lib.sh — compose resolves relative bind
+# paths against the FIRST compose file's dir (the upstream one), not this override's.
+services:
+  walrus-deploy:
+    volumes:
+      - ${MW_DEPLOY_SCRIPT:?MW_DEPLOY_SCRIPT must be set (source scripts/lib.sh)}:/root/deploy-walrus.sh:ro
+      # The pinned walrus checkout's own contracts/ (version-matched to WALRUS_IMAGE_NAME), so the
+      # deploy builds sources that match the image's Move compiler — no ICE, no walrus-docs-latest gamble.
+      - ${MW_CONTRACTS_DIR:?MW_CONTRACTS_DIR must be set (source scripts/lib.sh)}:/opt/walrus/mw-contracts:ro
