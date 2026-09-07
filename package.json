@@ -1,6 +1,6 @@
 {
   "name": "@meddleware/walrus-client",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "type": "module",
   "description": "Walrus decentralised storage client and asset management utilities for Sui applications.",
   "author": "Meddleware <dev@meddleware.co.uk>",

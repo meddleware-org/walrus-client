@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { WalrusFile } from '@mysten/walrus'
 import type { Signer } from '@mysten/sui/cryptography'
 import type { createWalrusClient } from './client.js'
@@ -79,6 +78,7 @@ export async function uploadLocalFile(
   signer: Signer,
   options: UploadOptions = {},
 ): Promise<UploadResult> {
+  const { readFile } = await import('node:fs/promises')
   const contents = await readFile(filePath)
   return uploadBytes(client, new Uint8Array(contents), identifier, signer, options)
 }
