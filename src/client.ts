@@ -1,4 +1,4 @@
-import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc'
+import { SuiGrpcClient } from '@mysten/sui/grpc'
 import { walrus, TESTNET_WALRUS_PACKAGE_CONFIG, MAINNET_WALRUS_PACKAGE_CONFIG } from '@mysten/walrus'
 import type { WalrusPackageConfig } from '@mysten/walrus'
 
@@ -132,9 +132,9 @@ export function createWalrusClient({
   // client 'testnet' — harmless, since the real contract ids come from walrusPackageConfig and the RPC
   // endpoint from baseUrl; the label is never used for resolution when packageConfig is supplied.
   const suiNetwork: WalrusNetwork = bundled ?? 'testnet'
-  return new SuiJsonRpcClient({
+  return new SuiGrpcClient({
     network: suiNetwork,
-    url: baseUrl,
+    baseUrl,
   }).$extend(
     walrus({
       // A caller-supplied packageConfig targets a network the SDK doesn't bundle (e.g. localnet);

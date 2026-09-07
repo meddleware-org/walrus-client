@@ -12,9 +12,9 @@ vi.mock('@mysten/walrus', () => ({
   MAINNET_WALRUS_PACKAGE_CONFIG: { __mainnet: true },
 }))
 
-// SuiJsonRpcClient stub whose $extend just returns a marker (createWalrusClient uses JSON-RPC).
-vi.mock('@mysten/sui/jsonRpc', () => ({
-  SuiJsonRpcClient: class {
+// SuiGrpcClient stub whose $extend just returns a marker (createWalrusClient uses gRPC).
+vi.mock('@mysten/sui/grpc', () => ({
+  SuiGrpcClient: class {
     constructor(public cfg: any) {}
     $extend(ext: unknown) {
       return { __client: true, ext, cfg: this.cfg }
