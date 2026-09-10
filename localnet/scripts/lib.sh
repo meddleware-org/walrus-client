@@ -15,7 +15,7 @@ LN_ENV_FILE="${LN_ROOT}/.env.localnet"                  # the contract every sui
 # and Sui node all match) — so no downgrade or script patching is needed. `main` has dropped
 # local-testbed, so we track the latest release tag that keeps it. Override via WALRUS_REPO_REF.
 WALRUS_REPO_URL="${WALRUS_REPO_URL:-https://github.com/MystenLabs/walrus.git}"
-WALRUS_REPO_REF="${WALRUS_REPO_REF:-testnet-v1.55.2}"
+WALRUS_REPO_REF="${WALRUS_REPO_REF:-testnet-v1.56.0}"
 
 # The upstream compose hardcodes a stale image digest; override to the release-tag image so the
 # binary matches the pinned ref. NOTE: Docker image tags are mutable — even a pinned release tag
@@ -29,11 +29,9 @@ UPSTREAM_COMPOSE="${LN_UPSTREAM}/docker/local-testbed/docker-compose.yaml"
 # Always applied.
 TESTBED_OVERRIDE="${LN_ROOT}/testbed.override.yml"
 # Override that remounts our patched deploy script + version-matched contracts. Enabled by default
-# (MW_PATCH_DEPLOY=1). The `testnet-v1.55.2` image tag is mutable on Docker Hub; when it was first
-# tested, its binary used `--contract-dir` (matching the upstream script). It now resolves to a
-# binary that uses `--contract-path`. Our patched script uses `--contract-path` (the current API),
-# so defaulting to 1 makes the harness robust against future tag drift. Set MW_PATCH_DEPLOY=0 only
-# if you are testing with a verified internally-consistent image+script pair.
+# (MW_PATCH_DEPLOY=1). The `testnet-v1.56.0` image tag uses `--contract-dir` (matching the
+# upstream deploy script), so our patched script auto-detects and uses the same flag. Set
+# MW_PATCH_DEPLOY=0 only if you are testing with a verified internally-consistent image+script pair.
 MW_PATCH_DEPLOY="${MW_PATCH_DEPLOY:-1}"
 DEPLOY_PATCH_OVERRIDE="${LN_ROOT}/deploy-patch.override.yml"
 # Our upload-relay compose (layers on top of the testbed network).
