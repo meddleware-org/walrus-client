@@ -54,9 +54,36 @@ describe('createWalrusClient upload-relay wiring', () => {
     expect(walrusArgs[0].uploadRelay).toBeUndefined()
   })
 
-  it('attaches a Bearer auth header only when a token is supplied', () => {
+  it('injects a Bearer auth header via the relay fetch hook when a token is supplied', async () => {
+    // The @mysten/walrus UploadRelayClient has no `headers` option (only host/fetch/timeout/
+    // onError), so the token must be threaded through a custom `fetch`. Assert the wrapper
+    // exists and actually sets the Authorization header on the outgoing request.
     createWalrusClient({ network: 'testnet', uploadRelayAuthToken: 'secret-token' })
-    expect(walrusArgs[0].uploadRelay.headers).toEqual({ Authorization: 'Bearer secret-token' })
+    expect(walrusArgs[0].uploadRelay.headers).toBeUndefined()
+    const relayFetch = walrusArgs[0].uploadRelay.fetch
+    expect(relayFetch).toBeTypeOf('function')
+
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 }))
+    try {
+      await relayFetch('https://relay.example.com/v1/blob-upload-relay', {
+        method: 'POST',
+        headers: { 'content-type': 'application/octet-stream' },
+      })
+      const [, init] = spy.mock.calls[0]
+      const sent = new Headers((init as RequestInit).headers)
+      expect(sent.get('authorization')).toBe('Bearer secret-token')
+      // Pre-existing headers are preserved.
+      expect(sent.get('content-type')).toBe('application/octet-stream')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('adds no relay fetch hook when no token is supplied', () => {
+    createWalrusClient({ network: 'testnet' })
+    expect(walrusArgs[0].uploadRelay.fetch).toBeUndefined()
   })
 })
 

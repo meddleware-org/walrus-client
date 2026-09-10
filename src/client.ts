@@ -147,8 +147,20 @@ export function createWalrusClient({
             uploadRelay: {
               host: relayHost,
               sendTip: { max: uploadRelayMaxTipMist },
+              // The @mysten/walrus UploadRelayClient does NOT accept a `headers` option
+              // (its options are only { host, fetch, timeout, onError }) — a `headers`
+              // key is silently dropped, so an NFT-gated relay would never see the proof
+              // and reject with "missing access proof". Inject the Authorization header
+              // through the supported `fetch` hook instead: wrap globalThis.fetch so every
+              // relay request (tip-config + blob-upload-relay) carries the Bearer token.
               ...(uploadRelayAuthToken
-                ? { headers: { Authorization: `Bearer ${uploadRelayAuthToken}` } }
+                ? {
+                    fetch: (url: RequestInfo, init?: RequestInit): Promise<Response> => {
+                      const headers = new Headers(init?.headers)
+                      headers.set('Authorization', `Bearer ${uploadRelayAuthToken}`)
+                      return globalThis.fetch(url, { ...init, headers })
+                    },
+                  }
                 : {}),
             },
           }
