@@ -7,8 +7,8 @@ vi.mock('@mysten/walrus', () => ({
 }))
 
 // node:fs/promises readFile stub for uploadLocalFile.
-const readFileMock = vi.fn(async () => Buffer.from('local-bytes'))
-vi.mock('node:fs/promises', () => ({ readFile: (...a: unknown[]) => readFileMock(...a) }))
+const readFileMock = vi.fn(async (_path: unknown) => Buffer.from('local-bytes'))
+vi.mock('node:fs/promises', () => ({ readFile: (...a: unknown[]) => readFileMock(a[0]) }))
 
 import {
   uploadBytes,
