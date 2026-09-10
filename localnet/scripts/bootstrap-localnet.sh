@@ -23,8 +23,13 @@ require curl
 # The access_gate deploy (step 4) publishes to localnet, so point the sui client there regardless of
 # whatever env was previously active (e.g. testnet).
 log "switching sui client to the localnet env"
-sui client switch --env localnet >/dev/null 2>&1 \
-  || die "no sui 'localnet' env — create it: sui client new-env --alias localnet --rpc http://127.0.0.1:9000"
+if ! sui client switch --env localnet >/dev/null 2>&1; then
+  log "no 'localnet' env found — creating it"
+  sui client new-env --alias localnet --rpc http://127.0.0.1:9000 >/dev/null 2>&1 \
+    || die "failed to create localnet sui env (is the localnet RPC at http://127.0.0.1:9000 reachable?)"
+  sui client switch --env localnet >/dev/null 2>&1 \
+    || die "localnet env was created but switch still failed — check sui client config"
+fi
 
 # Earlier sudo runs may have left generated/ or .env.localnet owned by root; this (non-sudo) run then
 # can't overwrite them. Remove any such root-owned leftovers via sudo (same elevation `dock` uses).

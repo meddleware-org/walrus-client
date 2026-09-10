@@ -33,10 +33,9 @@ jobs:
       - name: Install sui CLI (suiup)
         run: |
           curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/suiup" install sui@testnet --yes || "$HOME/.local/bin/suiup" install sui@testnet
-          sui client new-env --alias localnet --rpc http://127.0.0.1:9000 || true
-          sui client switch --env localnet || true
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # localnet env creation is deferred to bootstrap-localnet.sh (runs after the testbed is up)
 
       - name: Bring up the localnet testbed
         working-directory: repos/walrus-client/localnet
