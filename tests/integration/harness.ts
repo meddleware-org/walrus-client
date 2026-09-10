@@ -1,7 +1,7 @@
 // Shared setup for the localnet integration suites. Reads the `.env.localnet` contract produced by
 // localnet/scripts/bootstrap-localnet.sh (export it first: `set -a && source .env.localnet`).
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
-import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc'
+import { SuiGrpcClient } from '@mysten/sui/grpc'
 import { NotEnoughBlobConfirmationsError } from '@mysten/walrus'
 import { createWalrusClient, type WalrusPackageConfig } from '../../src/client.js'
 import { uploadImageBytes } from '../../src/upload.js'
@@ -33,23 +33,23 @@ export function localnetPackageConfig(): WalrusPackageConfig {
   }
 }
 
-/** A Walrus client wired to the localnet testbed. Uploads directly to storage nodes (no relay)
- * because localnet storage nodes use self-signed TLS certs that the relay image cannot verify
- * (the relay uses Anemo/mTLS with certificates it doesn't hold for localnet). Direct upload
- * uses the standard HTTPS REST API on port 9185; TLS verification is disabled for this test
- * process via NODE_TLS_REJECT_UNAUTHORIZED=0 in vitest.integration.config.ts. */
+/** A Walrus client wired to the localnet testbed. Uploads go through the localnet relay
+ * (WALRUS_RELAY_HOST, default http://127.0.0.1:57391) rather than directly to storage nodes.
+ * Storage nodes only advertise their internal Docker-network addresses (10.0.0.10-13) in the
+ * on-chain committee — the host cannot reach them directly. The relay runs on the testbed network
+ * and CAN reach the nodes; it is configured with tip_config: !no_tip so no WAL auth is needed. */
 export function localnetWalrusClient() {
   return createWalrusClient({
     network: 'localnet',
     rpcUrl: required('WALRUS_RPC_URL'),
     walrusPackageConfig: localnetPackageConfig(),
-    disableUploadRelay: true,
+    uploadRelayHost: required('WALRUS_RELAY_HOST'),
   })
 }
 
-/** A plain Sui JSON-RPC client for owned-object queries against localnet. */
-export function localnetSuiClient(): SuiJsonRpcClient {
-  return new SuiJsonRpcClient({ url: required('WALRUS_RPC_URL') })
+/** A Sui gRPC client for owned-object queries against localnet (`ClientWithCoreApi`). */
+export function localnetSuiClient(): SuiGrpcClient {
+  return new SuiGrpcClient({ network: 'localnet', baseUrl: required('WALRUS_RPC_URL') })
 }
 
 /** The funded localnet test keypair (Node signer). */
