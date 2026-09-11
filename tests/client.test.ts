@@ -81,6 +81,28 @@ describe('createWalrusClient upload-relay wiring', () => {
     }
   })
 
+  it('resolves a token PROVIDER per request (fresh token on resume)', async () => {
+    // A provider function is called on each relay request, so a retained flow resumed after an
+    // interrupted upload presents the current token rather than a stale baked-in one.
+    let current: string | undefined = 'token-1'
+    createWalrusClient({ network: 'testnet', uploadRelayAuthToken: () => current })
+    const relayFetch = walrusArgs[0].uploadRelay.fetch
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
+    try {
+      await relayFetch('https://relay.example.com/v1/blob-upload-relay', { method: 'POST' })
+      expect(new Headers((spy.mock.calls[0][1] as RequestInit).headers).get('authorization')).toBe(
+        'Bearer token-1',
+      )
+      current = 'token-2' // e.g. a fresh challenge signed on retry
+      await relayFetch('https://relay.example.com/v1/blob-upload-relay', { method: 'POST' })
+      expect(new Headers((spy.mock.calls[1][1] as RequestInit).headers).get('authorization')).toBe(
+        'Bearer token-2',
+      )
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('adds no relay fetch hook when no token is supplied', () => {
     createWalrusClient({ network: 'testnet' })
     expect(walrusArgs[0].uploadRelay.fetch).toBeUndefined()

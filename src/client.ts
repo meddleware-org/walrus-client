@@ -85,8 +85,13 @@ export type CreateWalrusClientOptions = {
   /**
    * Bearer token for the upload relay `Authorization` header. Obtain via
    * `createRelayAccessToken` from the `access` module when the relay is NFT-gated.
+   *
+   * May be a **provider function** resolved per request instead of a static string. This lets a
+   * retained upload flow be resumed with a FRESH token: an interrupted single-use upload keeps its
+   * on-chain consume (the `consumeDigest`) but must present a new challenge signature on retry, so
+   * the client reads the current token on each relay call rather than baking one in at construction.
    */
-  uploadRelayAuthToken?: string
+  uploadRelayAuthToken?: string | (() => string | undefined)
   /**
    * Maximum tip payment to the upload relay in MIST (default 1,000,000 = 0.001 SUI).
    * The relay may request less; this cap prevents the client from overpaying.
@@ -152,12 +157,18 @@ export function createWalrusClient({
               // key is silently dropped, so an NFT-gated relay would never see the proof
               // and reject with "missing access proof". Inject the Authorization header
               // through the supported `fetch` hook instead: wrap globalThis.fetch so every
-              // relay request (tip-config + blob-upload-relay) carries the Bearer token.
+              // relay request (tip-config + blob-upload-relay) carries the Bearer token,
+              // resolved PER REQUEST (a static token or a provider) so a resumed flow can
+              // present a fresh token without rebuilding the client.
               ...(uploadRelayAuthToken
                 ? {
                     fetch: (url: RequestInfo, init?: RequestInit): Promise<Response> => {
+                      const token =
+                        typeof uploadRelayAuthToken === 'function'
+                          ? uploadRelayAuthToken()
+                          : uploadRelayAuthToken
                       const headers = new Headers(init?.headers)
-                      headers.set('Authorization', `Bearer ${uploadRelayAuthToken}`)
+                      if (token) headers.set('Authorization', `Bearer ${token}`)
                       return globalThis.fetch(url, { ...init, headers })
                     },
                   }
