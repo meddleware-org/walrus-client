@@ -67,6 +67,40 @@ export function extendBlobLifetimeTransaction(
   return client.walrus.extendBlobTransaction({ blobObjectId, ...options })
 }
 
+/** A blob's storage-node availability certificate, serialized as base64 (from the upload step). */
+export interface CertifyOptions {
+  /** The Walrus blob id. */
+  blobId: string
+  /** The on-chain Blob object id (not the blob id). */
+  blobObjectId: string
+  /**
+   * The base64 availability certificate returned by the upload step. `@mysten/walrus` accepts the
+   * base64 string directly (it parses it internally), so no BCS handling is needed here.
+   */
+  certificate: string
+  /** Must match how the blob was registered (our uploads register non-deletable). */
+  deletable?: boolean
+}
+
+/**
+ * Build (but do not sign) a transaction that certifies an already-uploaded blob, for a browser
+ * wallet to sign. Lets an upload that was registered + uploaded (and paid for) but not certified —
+ * e.g. the user dismissed the certify prompt — be completed later without re-uploading: certify is a
+ * plain owner transaction that submits the stored availability certificate, validated on-chain.
+ *
+ * @param client A Walrus-extended client.
+ * @param options The blob ids + the base64 certificate captured at upload time.
+ * @returns An unsigned `Transaction`.
+ */
+export function certifyBlobTransaction(client: WalrusClient, options: CertifyOptions) {
+  return client.walrus.certifyBlobTransaction({
+    blobId: options.blobId,
+    blobObjectId: options.blobObjectId,
+    certificate: options.certificate,
+    deletable: options.deletable ?? false,
+  })
+}
+
 /**
  * Set on-chain key/value attributes on a blob (Node.js — signs and executes). A
  * `null` value deletes that attribute.

@@ -23,11 +23,12 @@ export type { WalrusClient, UploadOptions, UploadResult } from './upload.js'
 export {
   extendBlobLifetime,
   extendBlobLifetimeTransaction,
+  certifyBlobTransaction,
   setBlobAttributes,
   setBlobAttributesTransaction,
   readBlobAttributes,
 } from './manage.js'
-export type { ExtendOptions } from './manage.js'
+export type { ExtendOptions, CertifyOptions } from './manage.js'
 
 export { fetchOwnedWalrusBlobs, findUncertifiedRegisteredBlob } from './query.js'
 export type { OwnedBlob, ResumableRegistration } from './query.js'
