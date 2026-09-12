@@ -101,6 +101,34 @@ export function certifyBlobTransaction(client: WalrusClient, options: CertifyOpt
   })
 }
 
+/** Breakdown of the on-chain cost (in MIST) of storing a blob of `size` bytes for `epochs` epochs. */
+export interface StorageCost {
+  /** Per-epoch storage cost × epochs (the part that scales with duration / that an extend pays). */
+  storageCost: bigint
+  /** One-time write cost (paid on registration, not on extend). */
+  writeCost: bigint
+  /** `storageCost + writeCost`. */
+  totalCost: bigint
+}
+
+/**
+ * Estimate the on-chain storage cost of a blob, so the UI can price a chosen reservation or extension
+ * duration. Thin wrapper over the SDK's `walrus.storageCost(size, epochs)` — kept here so Vue layers
+ * (which must not import `@mysten/walrus`) can price durations through the injected client.
+ *
+ * @param client A Walrus-extended client.
+ * @param size Unencoded blob size in bytes.
+ * @param epochs Number of epochs to price (reservation length, or epochs added on extend).
+ * @returns Storage/write/total cost in MIST.
+ */
+export function estimateStorageCost(
+  client: WalrusClient,
+  size: number,
+  epochs: number,
+): Promise<StorageCost> {
+  return client.walrus.storageCost(size, epochs)
+}
+
 /**
  * Set on-chain key/value attributes on a blob (Node.js — signs and executes). A
  * `null` value deletes that attribute.

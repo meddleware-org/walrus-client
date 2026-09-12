@@ -24,14 +24,15 @@ export {
   extendBlobLifetime,
   extendBlobLifetimeTransaction,
   certifyBlobTransaction,
+  estimateStorageCost,
   setBlobAttributes,
   setBlobAttributesTransaction,
   readBlobAttributes,
 } from './manage.js'
-export type { ExtendOptions, CertifyOptions } from './manage.js'
+export type { ExtendOptions, CertifyOptions, StorageCost } from './manage.js'
 
-export { fetchOwnedWalrusBlobs, findUncertifiedRegisteredBlob } from './query.js'
-export type { OwnedBlob, ResumableRegistration } from './query.js'
+export { fetchOwnedWalrusBlobs } from './query.js'
+export type { OwnedBlob } from './query.js'
 
 export {
   personalMessageForNonce,

@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   extendBlobLifetime,
   extendBlobLifetimeTransaction,
+  certifyBlobTransaction,
+  estimateStorageCost,
   setBlobAttributes,
   setBlobAttributesTransaction,
   readBlobAttributes,
@@ -21,6 +23,12 @@ function fakeClient() {
     walrus: {
       executeExtendBlobTransaction: vi.fn(record('executeExtendBlobTransaction')),
       extendBlobTransaction: vi.fn(record('extendBlobTransaction')),
+      certifyBlobTransaction: vi.fn(record('certifyBlobTransaction')),
+      storageCost: vi.fn(async (_size: number, _epochs: number) => ({
+        storageCost: 900n,
+        writeCost: 100n,
+        totalCost: 1000n,
+      })),
       executeWriteBlobAttributesTransaction: vi.fn(record('executeWriteBlobAttributesTransaction')),
       writeBlobAttributesTransaction: vi.fn(record('writeBlobAttributesTransaction')),
       readBlobAttributes: vi.fn(record('readBlobAttributes')),
@@ -55,6 +63,33 @@ describe('extendBlobLifetimeTransaction', () => {
     const { client } = fakeClient()
     const tx = extendBlobLifetimeTransaction(client, 'OBJ', { epochs: 3 })
     expect(tx).toEqual({ __tx: 'extendBlobTransaction' })
+  })
+})
+
+describe('certifyBlobTransaction', () => {
+  it('passes the base64 certificate + ids through and returns an unsigned tx', () => {
+    const { client, calls } = fakeClient()
+    const tx = certifyBlobTransaction(client, {
+      blobId: 'BLOB',
+      blobObjectId: 'OBJ',
+      certificate: 'CERT_B64',
+    })
+    expect(calls.certifyBlobTransaction[0]).toEqual({
+      blobId: 'BLOB',
+      blobObjectId: 'OBJ',
+      certificate: 'CERT_B64',
+      deletable: false,
+    })
+    expect(tx).toEqual({ __tx: 'certifyBlobTransaction' })
+  })
+})
+
+describe('estimateStorageCost', () => {
+  it('passes size + epochs to the SDK and returns its cost breakdown', async () => {
+    const { client } = fakeClient()
+    const cost = await estimateStorageCost(client, 2048, 10)
+    expect(client.walrus.storageCost).toHaveBeenCalledWith(2048, 10)
+    expect(cost).toEqual({ storageCost: 900n, writeCost: 100n, totalCost: 1000n })
   })
 })
 
