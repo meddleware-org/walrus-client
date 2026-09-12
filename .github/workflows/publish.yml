@@ -32,12 +32,19 @@ jobs:
       - name: Publish to npmjs (provenance via OIDC, idempotent)
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          # Use `npm view` (registry API) rather than curl (CDN) to avoid propagation-lag false
-          # negatives: shortly after a manual publish the CDN can still 404 the version, which made
-          # this fall through to `npm publish` and fail with the misleading E404/"no permission"
-          # (npm's response when publishing over an existing version).
-          if npm view "@meddleware/walrus-client@${VERSION}" version >/dev/null 2>&1; then
+          PKG="@meddleware/walrus-client@${VERSION}"
+          # Pre-check via `npm view` (registry API, not CDN). But even the registry read path lags a
+          # manual publish by a few seconds, so when a tag-triggered run races a just-published
+          # version this can miss and fall through to `npm publish`, which then 404s ("no permission"
+          # — npm's response to publishing over an existing version). So also tolerate that race:
+          # after a failed publish, re-check and treat "version now present" as success.
+          if npm view "$PKG" version >/dev/null 2>&1; then
             echo "::notice::v${VERSION} already published to npmjs — skipping"
+          elif npm publish --provenance; then
+            echo "::notice::published v${VERSION}"
+          elif npm view "$PKG" version >/dev/null 2>&1; then
+            echo "::notice::v${VERSION} already present (publish raced a prior publish) — treating as success"
           else
-            npm publish --provenance
+            echo "::error::publish failed and v${VERSION} is not on the registry"
+            exit 1
           fi
