@@ -68,3 +68,64 @@ export async function fetchOwnedWalrusBlobs(
   }
   return blobs
 }
+
+/** A registered-but-not-yet-uploaded blob, discoverable on-chain to resume an interrupted upload. */
+export type ResumableRegistration = {
+  /** The on-chain Blob object id. */
+  objectId: string
+  /** The register transaction digest (the tx that last mutated an uncertified blob). */
+  registerDigest: string
+}
+
+/**
+ * Find an owned `Blob` that was already registered on-chain for `blobId` but not yet certified, so
+ * an interrupted upload can be resumed WITHOUT re-registering — no local pointer needed. This makes
+ * resume robust across cache-clear / new device / incognito (the registration lives on-chain).
+ *
+ * A blob matches when its `blob_id` equals `blobId`, it is uncertified, and its storage has not
+ * expired. `registerDigest` is read from the object's `previousTransaction` — for a blob that was
+ * only registered (never certified), that is the register transaction.
+ *
+ * @param suiClient A Sui client exposing the unified core API (`SuiGrpcClient`).
+ * @param walrusClient A Walrus-extended client (see {@link createWalrusClient}).
+ * @param owner The address whose owned blobs to search.
+ * @param blobId The target blob id (deterministic from the encoded file content).
+ * @returns The matching registration, or `null` if none is resumable.
+ */
+export async function findUncertifiedRegisteredBlob(
+  suiClient: ClientWithCoreApi,
+  walrusClient: WalrusClient,
+  owner: string,
+  blobId: string,
+): Promise<ResumableRegistration | null> {
+  const [blobType, sys] = await Promise.all([
+    walrusClient.walrus.getBlobType(),
+    walrusClient.walrus.systemState(),
+  ])
+  const currentEpoch = Number(sys.committee.epoch)
+  const { objects } = await suiClient.core.listOwnedObjects({
+    owner,
+    type: blobType,
+    include: { json: true, previousTransaction: true },
+  })
+  for (const obj of objects) {
+    const o = obj as { objectId: string; json?: unknown; previousTransaction?: string }
+    const fields = structFields(o.json)
+    if (!fields || o.previousTransaction === undefined) continue
+    const certified = fields.certified_epoch !== null && fields.certified_epoch !== undefined
+    if (certified) continue
+    const storage = structFields(fields.storage)
+    const endEpoch = Number(storage?.end_epoch ?? 0)
+    if (endEpoch <= currentEpoch) continue // expired reservation — cannot upload to it
+    let id: string
+    try {
+      id = blobIdFromInt(BigInt(fields.blob_id as string))
+    } catch {
+      continue
+    }
+    if (id === blobId) {
+      return { objectId: o.objectId, registerDigest: o.previousTransaction }
+    }
+  }
+  return null
+}

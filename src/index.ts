@@ -29,8 +29,8 @@ export {
 } from './manage.js'
 export type { ExtendOptions } from './manage.js'
 
-export { fetchOwnedWalrusBlobs } from './query.js'
-export type { OwnedBlob } from './query.js'
+export { fetchOwnedWalrusBlobs, findUncertifiedRegisteredBlob } from './query.js'
+export type { OwnedBlob, ResumableRegistration } from './query.js'
 
 export {
   personalMessageForNonce,

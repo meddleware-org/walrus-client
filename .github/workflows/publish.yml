@@ -32,9 +32,11 @@ jobs:
       - name: Publish to npmjs (provenance via OIDC, idempotent)
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://registry.npmjs.org/@meddleware%2fwalrus-client/${VERSION}")
-          if [ "$HTTP" = "200" ]; then
+          # Use `npm view` (registry API) rather than curl (CDN) to avoid propagation-lag false
+          # negatives: shortly after a manual publish the CDN can still 404 the version, which made
+          # this fall through to `npm publish` and fail with the misleading E404/"no permission"
+          # (npm's response when publishing over an existing version).
+          if npm view "@meddleware/walrus-client@${VERSION}" version >/dev/null 2>&1; then
             echo "::notice::v${VERSION} already published to npmjs — skipping"
           else
             npm publish --provenance

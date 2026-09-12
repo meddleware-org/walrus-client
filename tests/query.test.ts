@@ -6,11 +6,14 @@ vi.mock('@mysten/walrus', () => ({
   blobIdFromInt: (n: bigint) => `blobid-${n.toString()}`,
 }))
 
-import { fetchOwnedWalrusBlobs } from '../src/query.js'
+import { fetchOwnedWalrusBlobs, findUncertifiedRegisteredBlob } from '../src/query.js'
 
-function makeWalrusClient() {
+function makeWalrusClient(epoch = 90) {
   return {
-    walrus: { getBlobType: vi.fn().mockResolvedValue('0xpkg::blob::Blob') },
+    walrus: {
+      getBlobType: vi.fn().mockResolvedValue('0xpkg::blob::Blob'),
+      systemState: vi.fn().mockResolvedValue({ committee: { epoch } }),
+    },
   } as any
 }
 
@@ -80,5 +83,44 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
     ])
     const blobs = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
     expect(blobs).toEqual([])
+  })
+})
+
+describe('findUncertifiedRegisteredBlob (on-chain resume discovery)', () => {
+  // Current Walrus epoch = 90 (from the mock systemState).
+  const uncertified = {
+    objectId: '0xreg',
+    type: '0xpkg::blob::Blob',
+    json: { blob_id: '123', size: '2048', certified_epoch: null, storage: { end_epoch: 100 } },
+    previousTransaction: 'REGISTER_DIGEST',
+  }
+
+  it('returns the register digest of an uncertified, unexpired blob matching the blobId', async () => {
+    const { client, listOwnedObjects } = makeSuiClient([uncertified])
+    const found = await findUncertifiedRegisteredBlob(client, makeWalrusClient(90), '0xowner', 'blobid-123')
+    // previousTransaction is requested so the register digest can be read.
+    expect(listOwnedObjects).toHaveBeenCalledWith({
+      owner: '0xowner',
+      type: '0xpkg::blob::Blob',
+      include: { json: true, previousTransaction: true },
+    })
+    expect(found).toEqual({ objectId: '0xreg', registerDigest: 'REGISTER_DIGEST' })
+  })
+
+  it('ignores a certified blob (already uploaded)', async () => {
+    const certified = { ...uncertified, json: { ...uncertified.json, certified_epoch: 95 } }
+    const { client } = makeSuiClient([certified])
+    expect(await findUncertifiedRegisteredBlob(client, makeWalrusClient(90), '0xowner', 'blobid-123')).toBeNull()
+  })
+
+  it('ignores an expired reservation (end_epoch <= current epoch)', async () => {
+    const expired = { ...uncertified, json: { ...uncertified.json, storage: { end_epoch: 90 } } }
+    const { client } = makeSuiClient([expired])
+    expect(await findUncertifiedRegisteredBlob(client, makeWalrusClient(90), '0xowner', 'blobid-123')).toBeNull()
+  })
+
+  it('returns null when no owned blob matches the target blobId', async () => {
+    const { client } = makeSuiClient([uncertified])
+    expect(await findUncertifiedRegisteredBlob(client, makeWalrusClient(90), '0xowner', 'blobid-999')).toBeNull()
   })
 })
