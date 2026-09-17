@@ -1,3 +1,8 @@
+// Public API barrel for @meddleware/walrus-client. Ships TypeScript source directly (no build
+// step). Grouped by concern: client factory + network config (client.ts), upload flows
+// (upload.ts), blob lifetime/attribute management (manage.ts), owned-blob queries (query.ts), and
+// nft-gate relay access proofs (access.ts). Re-exports WalrusFile/RetryableWalrusClientError from
+// @mysten/walrus for convenience.
 export {
   createWalrusClient,
   getWalrusPackageConfig,
@@ -8,9 +13,10 @@ export {
   TESTNET_WALRUS_PACKAGE_CONFIG,
   MAINNET_WALRUS_PACKAGE_CONFIG,
 } from './client.js'
-export type { CreateWalrusClientOptions, WalrusNetwork } from './client.js'
+export type { CreateWalrusClientOptions, WalrusClientNetwork, WalrusNetwork } from './client.js'
 
 export {
+  MAX_SINGLE_RESERVATION_EPOCHS,
   LONG_TERM_EPOCHS,
   uploadBytes,
   uploadLocalFile,

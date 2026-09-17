@@ -13,3 +13,28 @@
 - **0BSD licence.** Do not change the licence.
 - **`uploadRelayMaxTipMist` is a library default, not a hardcoded income value.** The 1,000,000 MIST default in `client.ts` is a sensible cap on relay tip payments. Callers override it via `CreateWalrusClientOptions`. Do not treat it as a commission parameter — the on-chain commission is enforced by the `PlatformConfig` object in `access_gate`.
 - **`access.ts` imports from `@meddleware/nft-gate-client`.** The Walrus-specific aliases (`RelayChallenge`, `AccessProofInput`, `buildAccessProofToken`, `fetchRelayChallenge`) are thin re-exports kept for API stability. The unique piece is `createRelayAccessToken` (one-shot: challenge → sign → encode).
+
+---
+
+## Deferred documentation — NOT for the `docs.` website (planned here per Part 0.4)
+
+> Captured for the future **`dev.meddleware.co.uk`** subdomain and white-label offering; excluded
+> from the user-facing `docs.` site. The user-facing Walrus Storage docs cover *what/how/when* only.
+
+### `dev.` — developer integration (to write later)
+
+- **Full SDK reference** (TypeDoc target — everything is exported from `src/index.ts` with doc
+  comments): `createWalrusClient`, the upload flows (`uploadBytes`/`createUploadFlow`/…), lifetime
+  management (`extendBlobLifetime`, `estimateStorageCost`, `setBlobAttributes`), `fetchOwnedWalrusBlobs`,
+  and the relay access-proof helpers.
+- **Integration recipes:** Node vs browser upload; the epoch/lifetime model and
+  `LONG_TERM_EPOCHS`/`MAX_SINGLE_RESERVATION_EPOCHS` constraints; resuming a gated upload with a
+  per-request `uploadRelayAuthToken` provider function.
+- **Schemas:** `UploadResult`, `OwnedBlob`, `StorageCost`, `RelayChallenge`/`AccessProofInput` shapes;
+  the `nft-gate:access:<nonce>` proof wire format (source of truth: `@meddleware/nft-gate-client`).
+
+### White-label (to write later)
+
+- Running against an operator's **own upload relay** (`uploadRelayHost`) and RPC (`rpcUrl` overrides,
+  never removes, `DEFAULT_RPC_URLS`); the `uploadRelayMaxTipMist` tip ceiling; how relay commission is
+  enforced by `PlatformConfig`/`access_gate`, not by this library.
