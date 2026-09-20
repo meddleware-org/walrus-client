@@ -66,14 +66,16 @@ LN_FAUCET_URL="${LN_FAUCET_URL:-http://127.0.0.1:9123/gas}"
 LN_RELAY_HOST="${LN_RELAY_HOST:-http://127.0.0.1:57391}"
 LN_AGGREGATOR_HOST="${LN_AGGREGATOR_HOST:-http://127.0.0.1:57392}"
 
-# Fixed localnet deployer keypair (pre-committed; localnet-only, not production).
-# walrus-deploy is mounted this config via testbed.override.yml so the deployer address is always
-# known. bootstrap-localnet.sh imports this key and transfers WAL to the test address (localnet has
-# no SUI→WAL exchange, so the deployer wallet is the only WAL source).
+# Fixed localnet deployer keypair (for localnet testing ONLY; never used for production).
+# SECURITY: This keypair is hardcoded ONLY for ephemeral localnet integration testing in CI/local
+# short-lived environments. The keystore is GENERATED DYNAMICALLY at test startup via `sui keytool`,
+# not stored in git. NEVER use this key/address for any long-lived service, mainnet, or anything
+# with network access. It exists solely to bootstrap the testbed so walrus-deploy and bootstrap
+# scripts can transfer WAL to test addresses (localnet has no SUI→WAL exchange).
 FIXED_DEPLOYER_ADDR="0x222456ac3f6afb4bb9a10f6eae82fc8d3ac2ae3ea4c27b1516914b1708ba838c"
 # Raw Ed25519 private key in base64 (32 bytes — no scheme byte prefix). This is the format
-# accepted by `sui keytool import <key> ed25519`. The corresponding keystore entry (with the
-# 0x00 Ed25519 scheme byte prepended) lives in config/deployer-sui-config/sui.keystore.
+# accepted by `sui keytool import <key> ed25519`. The keystore is generated at runtime by up.sh
+# from this key; it is NOT committed to the repository.
 FIXED_DEPLOYER_PRIVKEY_B64="/zxu5t+Ezf/vyxzLWalUNt7Itw8gfiMNbQpFMYXXOVU="
 # The deployer config (client.yaml + sui.keystore) is mounted into walrus-deploy at runtime.
 DEPLOYER_SUI_CFG_DIR="${LN_ROOT}/config/deployer-sui-config"

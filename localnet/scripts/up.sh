@@ -34,12 +34,31 @@ sed -i '/^version:[[:space:]]/d' "${UPSTREAM_COMPOSE}" 2>/dev/null || true
 write_testbed_env
 
 # 2. Prepare the runtime deployer config. testbed.override.yml mounts generated/deployer-sui-config
-#    into walrus-deploy so it uses our fixed localnet key (FIXED_DEPLOYER_ADDR). We copy from the
-#    committed config/deployer-sui-config/ to generated/ so the container's writes (if any) do not
-#    propagate back to committed files. generated/ is gitignored.
+#    into walrus-deploy so it uses our fixed localnet key (FIXED_DEPLOYER_ADDR). We copy client.yaml
+#    and generate the keystore dynamically from the hardcoded FIXED_DEPLOYER_PRIVKEY_B64.
+#    generated/ is gitignored, so container writes do not propagate back to committed files.
 mkdir -p "${LN_GENERATED}/deployer-sui-config"
 cp "${DEPLOYER_SUI_CFG_DIR}/client.yaml" "${LN_GENERATED}/deployer-sui-config/client.yaml"
-cp "${DEPLOYER_SUI_CFG_DIR}/sui.keystore" "${LN_GENERATED}/deployer-sui-config/sui.keystore"
+
+# Generate sui.keystore dynamically from the hardcoded private key. This is localnet-only and
+# does not introduce security risk: the key is ephemeral, used only for local testing, and never
+# touches production or long-lived services. Do NOT use this key/address for anything besides
+# the localnet harness.
+require sui
+KEYSTORE_PATH="${LN_GENERATED}/deployer-sui-config/sui.keystore"
+# Create a temporary home to avoid polluting the user's real keystore
+TEMP_HOME="$(mktemp -d)"
+TEMP_KEYSTORE="${TEMP_HOME}/.sui/sui_config/sui.keystore"
+# Clean up temp home on exit
+trap "rm -rf '${TEMP_HOME}' 2>/dev/null || true" EXIT
+
+# Import the fixed private key into a temporary keystore
+HOME="${TEMP_HOME}" sui keytool import "${FIXED_DEPLOYER_PRIVKEY_B64}" ed25519 --json 2>/dev/null \
+  || die "failed to import deployer private key with sui keytool"
+
+# Extract the generated keystore and copy it to the runtime location
+[ -f "${TEMP_KEYSTORE}" ] || die "sui keytool did not generate a keystore at ${TEMP_KEYSTORE}"
+cp "${TEMP_KEYSTORE}" "${KEYSTORE_PATH}"
 log "deployer config ready at generated/deployer-sui-config (addr: ${FIXED_DEPLOYER_ADDR})"
 
 # 3. Stand up the testbed (Sui validators + faucet + fullnode + 4 walrus storage nodes), with our
