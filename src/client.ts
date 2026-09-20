@@ -167,6 +167,17 @@ export function createWalrusClient({
                         typeof uploadRelayAuthToken === 'function'
                           ? uploadRelayAuthToken()
                           : uploadRelayAuthToken
+                      if (token) {
+                        const urlStr =
+                          typeof url === 'string' ? url
+                          : url instanceof URL ? url.href
+                          : (url as Request).url
+                        if (new URL(urlStr).protocol !== 'https:') {
+                          throw new Error(
+                            `walrus-client: refusing to send auth token over non-https URL (${urlStr})`,
+                          )
+                        }
+                      }
                       const headers = new Headers(init?.headers)
                       if (token) headers.set('Authorization', `Bearer ${token}`)
                       return globalThis.fetch(url, { ...init, headers })

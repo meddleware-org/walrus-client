@@ -30,3 +30,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Localnet keypairs — never commit real keys; these are test-only and gitignored
+localnet/*.key
+localnet/**/sui.keystore

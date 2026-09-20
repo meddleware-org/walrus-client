@@ -107,6 +107,21 @@ describe('createWalrusClient upload-relay wiring', () => {
     createWalrusClient({ network: 'testnet' })
     expect(walrusArgs[0].uploadRelay.fetch).toBeUndefined()
   })
+
+  it('F4: relay fetch hook throws when auth token would be sent over http (non-https URL)', () => {
+    createWalrusClient({ network: 'testnet', uploadRelayAuthToken: 'secret' })
+    const relayFetch = walrusArgs[0].uploadRelay.fetch
+    expect(() =>
+      relayFetch('http://evil.example.com/v1/blob-upload-relay', { method: 'POST' }),
+    ).toThrow('non-https')
+  })
+
+  it('F6: auth token is scoped to the relay fetch hook only — globalThis.fetch is not patched', () => {
+    const originalFetch = globalThis.fetch
+    createWalrusClient({ network: 'testnet', uploadRelayAuthToken: 'secret' })
+    // The injected fetch is confined to uploadRelay.fetch; global fetch is untouched.
+    expect(globalThis.fetch).toBe(originalFetch)
+  })
 })
 
 describe('createWalrusClient localnet targeting', () => {
