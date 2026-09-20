@@ -2,7 +2,7 @@
 
 ## Invariants
 
-- **No build step.** The package ships TypeScript source directly (`"exports": { ".": "./src/index.ts" }`). Vite apps that consume it resolve through their own bundler. Do not add a `build` script or `dist/` output.
+- **No build step.** The package ships TypeScript source directly with dual entry points: main (`"."` → `src/index.ts`, browser-safe) and Node.js-only (`"./node"` → `src/node.ts`, includes filesystem utilities). Vite apps that consume it resolve through their own bundler. Do not add a `build` script or `dist/` output. Browser bundlers only see the main entry; Node.js imports must use `@meddleware/walrus-client/node` to avoid false warnings about Node-only modules.
 - **No hardcoded package addresses.** Walrus object type resolution must remain dynamic (see `query.ts`). Never introduce hardcoded Walrus package IDs — they differ between testnet and mainnet.
 - **`disableUploadRelay` is a safety valve, not the default.** The relay is required for browser uploads. Direct-to-storage-node only works from Node.js (or when the relay is explicitly unavailable). Default relay fallback must remain `PUBLIC_UPLOAD_RELAY_HOSTS[network]` (Mysten public relay — correct for any operator; operators with their own relay pass `uploadRelayHost` explicitly).
 - **`rpcUrl` overrides `DEFAULT_RPC_URLS`, never removes them.** The default URLs must always be present so the client works out-of-the-box without configuration.

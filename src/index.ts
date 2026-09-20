@@ -19,7 +19,6 @@ export {
   MAX_SINGLE_RESERVATION_EPOCHS,
   LONG_TERM_EPOCHS,
   uploadBytes,
-  uploadLocalFile,
   createUploadFlow,
   uploadImageBytes,
   createBlobUploadFlow,

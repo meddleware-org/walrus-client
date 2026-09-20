@@ -1,6 +1,6 @@
 {
   "name": "@meddleware/walrus-client",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "homepage": "https://docs.meddleware.co.uk/blockchain/sui/walrus-storage/",
   "type": "module",
   "description": "Walrus decentralised storage client and asset management utilities for Sui applications.",
@@ -21,7 +21,8 @@
     "CHANGELOG.md"
   ],
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
   },
   "scripts": {
     "type-check": "tsc --noEmit",
