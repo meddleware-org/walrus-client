@@ -44,21 +44,18 @@ cp "${DEPLOYER_SUI_CFG_DIR}/client.yaml" "${LN_GENERATED}/deployer-sui-config/cl
 # does not introduce security risk: the key is ephemeral, used only for local testing, and never
 # touches production or long-lived services. Do NOT use this key/address for anything besides
 # the localnet harness.
-require sui
 KEYSTORE_PATH="${LN_GENERATED}/deployer-sui-config/sui.keystore"
-# Create a temporary home to avoid polluting the user's real keystore
-TEMP_HOME="$(mktemp -d)"
-TEMP_KEYSTORE="${TEMP_HOME}/.sui/sui_config/sui.keystore"
-# Clean up temp home on exit
-trap "rm -rf '${TEMP_HOME}' 2>/dev/null || true" EXIT
 
-# Import the fixed private key into a temporary keystore
-HOME="${TEMP_HOME}" sui keytool import "${FIXED_DEPLOYER_PRIVKEY_B64}" ed25519 --json 2>/dev/null \
-  || die "failed to import deployer private key with sui keytool"
+# Generate the keystore entry: prepend Ed25519 scheme byte (0x00) to the raw 32-byte private key,
+# then base64-encode the resulting 33 bytes. The Sui keystore format is a JSON array of entries.
+# We pipe the decoded private key through printf to prepend the scheme byte, then base64-encode.
+KEYSTORE_ENTRY="$(echo -n "${FIXED_DEPLOYER_PRIVKEY_B64}" | base64 -d | \
+  (printf '\x00'; cat) | base64 -w 0)" \
+  || die "failed to generate keystore entry from private key"
 
-# Extract the generated keystore and copy it to the runtime location
-[ -f "${TEMP_KEYSTORE}" ] || die "sui keytool did not generate a keystore at ${TEMP_KEYSTORE}"
-cp "${TEMP_KEYSTORE}" "${KEYSTORE_PATH}"
+# Write the keystore as a JSON array with one entry
+printf '["%s"]' "${KEYSTORE_ENTRY}" > "${KEYSTORE_PATH}" \
+  || die "failed to write keystore to ${KEYSTORE_PATH}"
 log "deployer config ready at generated/deployer-sui-config (addr: ${FIXED_DEPLOYER_ADDR})"
 
 # 3. Stand up the testbed (Sui validators + faucet + fullnode + 4 walrus storage nodes), with our
