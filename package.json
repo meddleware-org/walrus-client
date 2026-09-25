@@ -1,6 +1,6 @@
 {
   "name": "@meddleware/walrus-client",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "homepage": "https://docs.meddleware.co.uk/blockchain/sui/walrus-storage/",
   "type": "module",
   "description": "Walrus decentralised storage client and asset management utilities for Sui applications.",
@@ -31,9 +31,9 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@meddleware/nft-gate-client": "~0.0.10",
     "@mysten/sui": "^2.30.0",
-    "@mysten/walrus": "~1.2.24",
-    "@meddleware/nft-gate-client": "~0.0.9"
+    "@mysten/walrus": "~1.2.24"
   },
   "devDependencies": {
     "@types/node": "~24.12.2",
