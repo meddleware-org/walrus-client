@@ -56,8 +56,22 @@ jobs:
       - name: Publish to npmjs (OIDC, idempotent)
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          if npm view "@meddleware/walrus-client@${VERSION}" version >/dev/null 2>&1; then
+          NAME=$(node -p "require('./package.json').name")
+          ENC=$(printf '%s' "$NAME" | sed 's#/#%2f#')
+          # Check the registry directly — `npm view` can transiently miss a freshly
+          # first-published version and then attempt a re-publish. A 200 means it's live.
+          if [ "$(curl -s -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/${ENC}/${VERSION}")" = "200" ]; then
             echo "::notice::v${VERSION} already published to npmjs — skipping."
           else
-            npm publish --access public
+            # Publish, but treat a "version already exists" error as success so a
+            # manually-published version (or a registry race) leaves the job green.
+            set +e; OUT=$(npm publish --access public 2>&1); RC=$?; set -e
+            printf '%s\n' "$OUT"
+            if [ "$RC" -ne 0 ]; then
+              if printf '%s' "$OUT" | grep -qiE 'cannot publish over|previously published|EPUBLISHCONFLICT'; then
+                echo "::notice::v${VERSION} already published — treating as success."
+              else
+                exit "$RC"
+              fi
+            fi
           fi
