@@ -21,7 +21,8 @@ This package provides configuration, upload helpers, and lifetime management for
 ### Node.js (deployment script)
 
 ```typescript
-import { createWalrusClient, uploadLocalFile, LONG_TERM_EPOCHS } from '@meddleware/walrus-client'
+import { createWalrusClient, LONG_TERM_EPOCHS } from '@meddleware/walrus-client'
+import { uploadLocalFile } from '@meddleware/walrus-client/node'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import * as fs from 'node:fs'
 
@@ -96,7 +97,7 @@ Core upload function (stores a quilt). Works in Node.js and browser.
 
 **`uploadLocalFile(client, filePath, identifier, signer, options?): Promise<UploadResult>`**
 
-Node.js only. Reads a file from disk and uploads it.
+Node.js only (import from `@meddleware/walrus-client/node`). Reads a file from disk and uploads it.
 
 **`createUploadFlow(client, contents, identifier, options?): WriteFilesFlow`**
 
