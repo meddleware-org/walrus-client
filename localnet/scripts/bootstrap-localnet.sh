@@ -7,12 +7,11 @@
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-# bootstrap needs BOTH docker AND your sui keystore. Run it as YOUR normal user (NOT via sudo) so
-# `sui` uses your keystore — docker access is handled automatically per-call (`dock` uses `sudo docker`
-# when you're not in a docker group). Running the whole script under sudo would make sui use root's
-# empty config and fail the access_gate deploy, so we refuse that.
+# Run as YOUR normal user (NOT via sudo): the testbed Sui config under localnet/.sui must stay
+# user-owned — docker access is handled automatically per-call (`dock` uses `sudo docker` when you're
+# not in a docker group). Running the whole script under sudo would leave root-owned state behind.
 if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
-  die "run this WITHOUT sudo — it needs your sui keystore, not root's:  bash scripts/bootstrap-localnet.sh
+  die "run this WITHOUT sudo:  bash scripts/bootstrap-localnet.sh
   (docker calls elevate themselves via sudo automatically; you'll be prompted for your password once.)"
 fi
 
@@ -20,10 +19,16 @@ require docker
 require sui
 require curl
 
-# The access_gate deploy (step 4) publishes to localnet, so point the sui client there regardless of
-# whatever env was previously active (e.g. testnet).
+# Dedicated Sui CLI state (never the operator's ~/.sui): the env switch, the new test address and
+# the admin-key import below all land in localnet/.sui (git-ignored), and the access_gate publish
+# inherits it through the exported variable. `-y` creates the config on first use.
+export SUI_CONFIG_DIR="${LN_SUI_CONFIG_DIR}"
+mkdir -p "${SUI_CONFIG_DIR}"
+log "using dedicated Sui config ${SUI_CONFIG_DIR}"
+
+# The access_gate deploy (step 4) publishes to localnet, so point the testbed client there.
 log "switching sui client to the localnet env"
-if ! sui client switch --env localnet >/dev/null 2>&1; then
+if ! sui client -y switch --env localnet >/dev/null 2>&1; then
   log "no 'localnet' env found — creating it"
   sui client new-env --alias localnet --rpc http://127.0.0.1:9000 >/dev/null 2>&1 \
     || die "failed to create localnet sui env (is the localnet RPC at http://127.0.0.1:9000 reachable?)"
@@ -106,7 +111,6 @@ log "funded test address ${TEST_ADDR}"
 # Strategy: read sui_admin.yaml from the volume, extract the admin address + keystore, import the
 # admin private key, find the WAL coin, transfer it to TEST_ADDR, then switch back.
 log "sourcing WAL: reading deploy admin wallet from outputs volume (${VOL})…"
-WAL_TRANSFER_OK=0
 ADMIN_YAML="$(dock run --rm -v "${VOL}:${DEPLOY_OUTPUTS_MOUNT}:ro" busybox cat "${DEPLOY_OUTPUTS_MOUNT}/sui_admin.yaml" 2>/dev/null || true)"
 # Parse active_address from the standard Sui client.yaml format (with or without quotes).
 ADMIN_ADDR="$(printf '%s\n' "${ADMIN_YAML}" | sed -n 's/^active_address:[[:space:]]*["'"'"']\{0,1\}\(0x[0-9a-f]*\).*/\1/p' | head -1)"
@@ -131,7 +135,7 @@ except Exception as e:
 " 2>/dev/null || true)"
 
   if [ -n "${ADMIN_KEY_ENTRY}" ]; then
-    LOCAL_KEYSTORE="${HOME}/.sui/sui_config/sui.keystore"
+    LOCAL_KEYSTORE="${SUI_CONFIG_DIR}/sui.keystore"
     if [ -f "${LOCAL_KEYSTORE}" ]; then
       python3 - "${ADMIN_KEY_ENTRY}" "${LOCAL_KEYSTORE}" <<'PYEOF' 2>/dev/null || true
 import sys, json
@@ -146,7 +150,7 @@ if entry not in ks:
         json.dump(ks, f)
     os.replace(tmp, ks_file)
 PYEOF
-      log "admin key injected into local keystore (addr: ${ADMIN_ADDR})"
+      log "admin key injected into the testbed keystore (addr: ${ADMIN_ADDR})"
     else
       warn "local sui.keystore not found at ${LOCAL_KEYSTORE}"
     fi
@@ -247,16 +251,15 @@ except Exception: pass
       else
         # `sui client transfer-object` was removed in newer Sui CLI versions.
         # Use a PTB (Programmable Transaction Block) to transfer arbitrary objects in v1.76.1+.
-        TRANSFER_OUT="$(sui client ptb \
+        if TRANSFER_OUT="$(sui client ptb \
           --transfer-objects "[@${WAL_COIN_OBJ}]" "@${TEST_ADDR}" \
-          --gas-budget 50000000 2>&1)" && {
+          --gas-budget 50000000 2>&1)"; then
           log "WAL coin ${WAL_COIN_OBJ} transferred from ${WAL_SOURCE_ADDR} to ${TEST_ADDR}"
-          WAL_TRANSFER_OK=1
-        } || {
+        else
           warn "WAL transfer failed:"
           printf '%s\n' "${TRANSFER_OUT}" | grep -iE 'error|failed|cannot|insufficient' | head -5 | sed 's/^/  /' >&2 || \
             printf '%s\n' "${TRANSFER_OUT}" | head -5 | sed 's/^/  /' >&2
-        }
+        fi
       fi
     else
       warn "no WAL coin found anywhere in keystore — write-side integration tests will fail"
@@ -325,3 +328,4 @@ EOF
 
 log "wrote ${LN_ENV_FILE}"
 log "done. Run:  set -a && source ${LN_ENV_FILE} && set +a  then  WALRUS_LOCALNET=1 npm run test:integration"
+log "(the testbed's Sui CLI state is in ${SUI_CONFIG_DIR}; use it with: SUI_CONFIG_DIR=${SUI_CONFIG_DIR} sui client …)"

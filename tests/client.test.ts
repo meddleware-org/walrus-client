@@ -58,7 +58,11 @@ describe('createWalrusClient upload-relay wiring', () => {
     // The @mysten/walrus UploadRelayClient has no `headers` option (only host/fetch/timeout/
     // onError), so the token must be threaded through a custom `fetch`. Assert the wrapper
     // exists and actually sets the Authorization header on the outgoing request.
-    createWalrusClient({ network: 'testnet', uploadRelayAuthToken: 'secret-token' })
+    createWalrusClient({
+      network: 'testnet',
+      uploadRelayHost: 'https://relay.example.com',
+      uploadRelayAuthToken: 'secret-token',
+    })
     expect(walrusArgs[0].uploadRelay.headers).toBeUndefined()
     const relayFetch = walrusArgs[0].uploadRelay.fetch
     expect(relayFetch).toBeTypeOf('function')
@@ -85,7 +89,11 @@ describe('createWalrusClient upload-relay wiring', () => {
     // A provider function is called on each relay request, so a retained flow resumed after an
     // interrupted upload presents the current token rather than a stale baked-in one.
     let current: string | undefined = 'token-1'
-    createWalrusClient({ network: 'testnet', uploadRelayAuthToken: () => current })
+    createWalrusClient({
+      network: 'testnet',
+      uploadRelayHost: 'https://relay.example.com',
+      uploadRelayAuthToken: () => current,
+    })
     const relayFetch = walrusArgs[0].uploadRelay.fetch
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
     try {
@@ -109,11 +117,36 @@ describe('createWalrusClient upload-relay wiring', () => {
   })
 
   it('F4: relay fetch hook throws when auth token would be sent over http (non-https URL)', () => {
-    createWalrusClient({ network: 'testnet', uploadRelayAuthToken: 'secret' })
+    createWalrusClient({
+      network: 'testnet',
+      uploadRelayHost: 'http://relay.example.com',
+      uploadRelayAuthToken: 'secret',
+    })
     const relayFetch = walrusArgs[0].uploadRelay.fetch
     expect(() =>
-      relayFetch('http://evil.example.com/v1/blob-upload-relay', { method: 'POST' }),
+      relayFetch('http://relay.example.com/v1/blob-upload-relay', { method: 'POST' }),
     ).toThrow('non-https')
+  })
+
+  it('never attaches the token to a request for another origin', async () => {
+    createWalrusClient({
+      network: 'testnet',
+      uploadRelayHost: 'https://relay.example.com',
+      uploadRelayAuthToken: 'secret',
+    })
+    const relayFetch = walrusArgs[0].uploadRelay.fetch
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
+    try {
+      await relayFetch('https://aggregator.example.com/v1/blobs/x')
+      expect(new Headers((spy.mock.calls[0][1] as RequestInit | undefined)?.headers).get('authorization')).toBeNull()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('defaults the tip ceiling to 0.05 SUI', () => {
+    createWalrusClient({ network: 'testnet' })
+    expect(walrusArgs[0].uploadRelay.sendTip.max).toBe(50_000_000)
   })
 
   it('F6: auth token is scoped to the relay fetch hook only — globalThis.fetch is not patched', () => {

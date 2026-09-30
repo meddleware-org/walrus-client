@@ -12,6 +12,8 @@ export {
   WALRUS_AGGREGATOR_HOSTS,
   TESTNET_WALRUS_PACKAGE_CONFIG,
   MAINNET_WALRUS_PACKAGE_CONFIG,
+  DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST,
+  relayAuthFetch,
 } from './client.js'
 export type { CreateWalrusClientOptions, WalrusClientNetwork, WalrusNetwork } from './client.js'
 

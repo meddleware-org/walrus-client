@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Shared helpers for the Walrus localnet harness. Source this; do not execute directly.
+# The variables defined here are consumed by the scripts that source this file.
+# shellcheck disable=SC2034
 set -euo pipefail
 
 # ── paths ─────────────────────────────────────────────────────────────────────
@@ -67,11 +69,12 @@ LN_RELAY_HOST="${LN_RELAY_HOST:-http://127.0.0.1:57391}"
 LN_AGGREGATOR_HOST="${LN_AGGREGATOR_HOST:-http://127.0.0.1:57392}"
 
 # Fixed localnet deployer keypair (for localnet testing ONLY; never used for production).
-# SECURITY: This keypair is hardcoded ONLY for ephemeral localnet integration testing in CI/local
-# short-lived environments. The keystore is GENERATED DYNAMICALLY at test startup via `sui keytool`,
-# not stored in git. NEVER use this key/address for any long-lived service, mainnet, or anything
-# with network access. It exists solely to bootstrap the testbed so walrus-deploy and bootstrap
-# scripts can transfer WAL to test addresses (localnet has no SUI→WAL exchange).
+# SECURITY: this private key IS committed to the repository, deliberately: it is a PUBLIC, burned
+# key that only ever controls funds on an ephemeral local testbed (faucet SUI and deploy-minted
+# WAL that vanish with `down.sh --clean`). Anyone can read it, so NEVER fund this address on
+# testnet or mainnet and never reuse it for a long-lived service. It exists solely to bootstrap the
+# testbed so walrus-deploy and bootstrap scripts can transfer WAL to test addresses (localnet has no
+# SUI→WAL exchange). The runtime keystore is generated from it by up.sh (in generated/, ignored).
 FIXED_DEPLOYER_ADDR="0x222456ac3f6afb4bb9a10f6eae82fc8d3ac2ae3ea4c27b1516914b1708ba838c"
 # Raw Ed25519 private key in base64 (32 bytes — no scheme byte prefix). This is the format
 # accepted by `sui keytool import <key> ed25519`. The keystore is generated at runtime by up.sh
@@ -79,6 +82,10 @@ FIXED_DEPLOYER_ADDR="0x222456ac3f6afb4bb9a10f6eae82fc8d3ac2ae3ea4c27b1516914b170
 FIXED_DEPLOYER_PRIVKEY_B64="/zxu5t+Ezf/vyxzLWalUNt7Itw8gfiMNbQpFMYXXOVU="
 # The deployer config (client.yaml + sui.keystore) is mounted into walrus-deploy at runtime.
 DEPLOYER_SUI_CFG_DIR="${LN_ROOT}/config/deployer-sui-config"
+# Dedicated Sui CLI state for the testbed. bootstrap-localnet.sh exports SUI_CONFIG_DIR to this
+# path, so every `sui` call it makes (and the access_gate publish it runs) reads and writes only
+# here — never the operator's ~/.sui (active env, active address, keystore).
+LN_SUI_CONFIG_DIR="${LN_ROOT}/.sui"
 # Absolute path to the RUNTIME copy of the deployer config (in generated/, which is gitignored).
 # up.sh copies DEPLOYER_SUI_CFG_DIR here before starting the testbed. Exported so testbed.override.yml
 # can reference it — compose resolves relative paths in override files against the FIRST compose

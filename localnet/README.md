@@ -15,7 +15,7 @@ scripts/bootstrap-localnet.sh
       ├─ deploys access_gate to localnet + creates a gate  (reuses ../../access-gate-sui/scripts/publish.sh)
       ├─ starts our upload-relay (relay.compose.yml, --context localnet)
       └─ writes .env.localnet   ← the contract every suite consumes
-scripts/down.sh  ──►  tears both down  (--clean also removes generated config + checkout)
+scripts/down.sh  ──►  tears both down  (--clean also removes generated config, localnet/.sui + checkout)
 ```
 
 The upstream `docker/local-testbed` is cloned (shallow, pinned) rather than re-authored here, so the
@@ -25,18 +25,21 @@ aligned with the repo-root toolchain table).
 ## Prerequisites
 
 - Docker + Docker Compose v2, with **your user in the `docker` group** so the scripts run **without
-  `sudo`**: `sudo usermod -aG docker $USER` then re-login (or `newgrp docker`). This matters —
-  `bootstrap-localnet.sh` uses *your* `sui` keystore, so running it under `sudo` (root's empty config)
-  would fail the `access_gate` deploy. The scripts fail fast with this guidance if run as root.
-- `sui` CLI on `PATH`, with a `localnet` env pointed at `http://127.0.0.1:9000`
-  (`sui client new-env --alias localnet --rpc http://127.0.0.1:9000`). Bootstrap switches to it.
+  `sudo`**: `sudo usermod -aG docker $USER` then re-login (or `newgrp docker`). The scripts fail
+  fast with this guidance if run as root (root-owned state would be left behind).
+- `sui` CLI on `PATH`. Bootstrap never touches your `~/.sui`: it exports
+  `SUI_CONFIG_DIR=localnet/.sui` (git-ignored), creates that config on first run, switches it to the
+  `localnet` env and keeps the test address and the imported deploy-admin key there. To inspect the
+  testbed with the CLI afterwards: `SUI_CONFIG_DIR=localnet/.sui sui client …`.
+- The fixed deployer key in `scripts/lib.sh` is committed on purpose: it is a public key for the
+  ephemeral testbed only. Never fund its address on testnet or mainnet.
 - The `access-gate-sui` repo checked out as a sibling (`repos/access-gate-sui`)
 
 ## Run
 
 ```bash
 bash scripts/up.sh                 # no sudo
-bash scripts/bootstrap-localnet.sh # no sudo — needs your sui keystore
+bash scripts/bootstrap-localnet.sh # no sudo — uses localnet/.sui, never ~/.sui
 set -a && source .env.localnet && set +a       # export WALRUS_* for the suites
 
 # then, in each repo:

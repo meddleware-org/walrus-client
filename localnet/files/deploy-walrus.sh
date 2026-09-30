@@ -44,6 +44,8 @@ if [ -z "${CONTRACT_PKG}" ]; then
 fi
 if [ -z "${CONTRACT_PKG}" ]; then
   echo "ERROR: could not locate the 'walrus' contract package with a Move.toml." >&2
+  # Diagnostic listing for a human reading the error, not parsed.
+  # shellcheck disable=SC2012
   ls -la /opt/walrus /opt/walrus/contracts /opt/walrus/mw-contracts 2>&1 | sed 's/^/  /' >&2 || true
   exit 3
 fi

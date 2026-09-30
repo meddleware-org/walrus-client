@@ -11,7 +11,7 @@
 - **`LONG_TERM_EPOCHS` and `MAX_SINGLE_RESERVATION_EPOCHS` are not arbitrary.** They reflect Walrus protocol constraints. Update them only when the Walrus protocol changes `max_epochs_ahead`.
 - **No secrets in source.** Relay auth tokens, keypairs, and credentials are caller-supplied at runtime. Never hardcode them.
 - **0BSD licence.** Do not change the licence.
-- **`uploadRelayMaxTipMist` is a library default, not a hardcoded income value.** The 1,000,000 MIST default in `client.ts` is a sensible cap on relay tip payments. Callers override it via `CreateWalrusClientOptions`. Do not treat it as a commission parameter — the on-chain commission is enforced by the `PlatformConfig` object in `access_gate`.
+- **`uploadRelayMaxTipMist` is a library default, not a hardcoded income value.** The `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST` (50,000,000 MIST = 0.05 SUI) default in `client.ts` bounds relay tip payments: ~8× the worst-case tip of the operator's linear relay at the 100 MiB edge cap, so a hostile relay is bounded but no legitimate upload fails (the previous 1,000,000 default sat *below* the operator relay's minimum tip). Callers override it via `CreateWalrusClientOptions`. Do not treat it as a commission parameter — the on-chain commission is enforced by the `PlatformConfig` object in `access_gate`.
 - **`access.ts` imports from `@meddleware/nft-gate-client`.** The Walrus-specific aliases (`RelayChallenge`, `AccessProofInput`, `buildAccessProofToken`, `fetchRelayChallenge`) are thin re-exports kept for API stability. The unique piece is `createRelayAccessToken` (one-shot: challenge → sign → encode).
 
 ---

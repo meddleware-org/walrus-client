@@ -44,11 +44,21 @@ export async function fetchOwnedWalrusBlobs(
   owner: string,
 ): Promise<OwnedBlob[]> {
   const blobType = await walrusClient.walrus.getBlobType()
-  const { objects } = await suiClient.core.listOwnedObjects({
-    owner,
-    type: blobType,
-    include: { json: true },
-  })
+  type OwnedPage = Awaited<ReturnType<typeof suiClient.core.listOwnedObjects>>
+  const objects: OwnedPage['objects'] = []
+  let cursor: string | null | undefined
+  // Page through every owned blob — a single page silently truncates large wallets.
+  for (;;) {
+    const page: OwnedPage = await suiClient.core.listOwnedObjects({
+      owner,
+      type: blobType,
+      include: { json: true },
+      ...(cursor ? { cursor } : {}),
+    })
+    objects.push(...page.objects)
+    if (!page.hasNextPage || !page.cursor) break
+    cursor = page.cursor
+  }
   const blobs: OwnedBlob[] = []
   for (const obj of objects) {
     const fields = structFields(obj.json)
@@ -58,12 +68,13 @@ export async function fetchOwnedWalrusBlobs(
       blobs.push({
         objectId: obj.objectId,
         blobId: blobIdFromInt(BigInt(fields.blob_id as string)),
+        // Safe as numbers: epochs are u32 and a blob's size is bounded far below 2^53.
         size: Number(fields.size),
         endEpoch: Number(storage?.end_epoch ?? 0),
         certified: fields.certified_epoch !== null && fields.certified_epoch !== undefined,
       })
     } catch {
-      // Skip blobs whose fields cannot be parsed.
+      // Deliberately skipped: an unparseable blob is not listed (display only).
     }
   }
   return blobs

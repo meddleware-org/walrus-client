@@ -93,8 +93,9 @@ export type CreateWalrusClientOptions = {
    */
   uploadRelayAuthToken?: string | (() => string | undefined)
   /**
-   * Maximum tip payment to the upload relay in MIST (default 1,000,000 = 0.001 SUI).
-   * The relay may request less; this cap prevents the client from overpaying.
+   * Maximum tip payment to the upload relay in MIST (default
+   * {@link DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST} = 0.05 SUI). The relay may request less; the SDK
+   * refuses a relay whose tip exceeds this cap, so it must sit above any legitimate tip.
    */
   uploadRelayMaxTipMist?: number
   /**
@@ -121,7 +122,7 @@ export function createWalrusClient({
   wasmUrl,
   uploadRelayHost,
   uploadRelayAuthToken,
-  uploadRelayMaxTipMist = 1_000_000,
+  uploadRelayMaxTipMist = DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST,
   disableUploadRelay = false,
 }: CreateWalrusClientOptions = {}) {
   // localnet has no bundled RPC/relay default — the caller must supply rpcUrl (and, for uploads,
@@ -156,37 +157,51 @@ export function createWalrusClient({
               // (its options are only { host, fetch, timeout, onError }) — a `headers`
               // key is silently dropped, so an NFT-gated relay would never see the proof
               // and reject with "missing access proof". Inject the Authorization header
-              // through the supported `fetch` hook instead: wrap globalThis.fetch so every
-              // relay request (tip-config + blob-upload-relay) carries the Bearer token,
-              // resolved PER REQUEST (a static token or a provider) so a resumed flow can
-              // present a fresh token without rebuilding the client.
+              // through the supported `fetch` hook instead (see relayAuthFetch).
               ...(uploadRelayAuthToken
-                ? {
-                    fetch: (url: RequestInfo, init?: RequestInit): Promise<Response> => {
-                      const token =
-                        typeof uploadRelayAuthToken === 'function'
-                          ? uploadRelayAuthToken()
-                          : uploadRelayAuthToken
-                      if (token) {
-                        const urlStr =
-                          typeof url === 'string' ? url
-                          : url instanceof URL ? url.href
-                          : (url as Request).url
-                        if (new URL(urlStr).protocol !== 'https:') {
-                          throw new Error(
-                            `walrus-client: refusing to send auth token over non-https URL (${urlStr})`,
-                          )
-                        }
-                      }
-                      const headers = new Headers(init?.headers)
-                      if (token) headers.set('Authorization', `Bearer ${token}`)
-                      return globalThis.fetch(url, { ...init, headers })
-                    },
-                  }
+                ? { fetch: relayAuthFetch(relayHost, uploadRelayAuthToken) }
                 : {}),
             },
           }
         : {}),
     }),
   )
+}
+
+/**
+ * Default client ceiling on the relay tip (MIST): 0.05 SUI, ~8× the worst-case tip of a linear
+ * `1_000_000 + 10/KiB` relay at a 100 MiB upload. It bounds what a hostile relay can charge while
+ * never rejecting a legitimate upload.
+ */
+export const DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST = 50_000_000
+
+/**
+ * Build a `fetch` that adds `Authorization: Bearer <token>` to requests whose origin is the
+ * relay's origin — and to nothing else. The token (or provider) is resolved per request so a
+ * resumed flow presents a fresh proof. A token is never sent over plain http except to a local
+ * development host.
+ *
+ * @param relayHost - The configured upload relay base URL.
+ * @param token - The access-proof token, or a provider returning it.
+ */
+export function relayAuthFetch(
+  relayHost: string,
+  token: string | (() => string | undefined),
+): (url: RequestInfo | URL, init?: RequestInit) => Promise<Response> {
+  const relayOrigin = new URL(relayHost).origin
+  return (url, init) => {
+    const href =
+      typeof url === 'string' ? url : url instanceof URL ? url.href : (url as Request).url
+    const target = new URL(href)
+    const value = typeof token === 'function' ? token() : token
+    if (!value || target.origin !== relayOrigin) return globalThis.fetch(url, init)
+    const local =
+      target.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname)
+    if (target.protocol !== 'https:' && !local) {
+      throw new Error(`walrus-client: refusing to send auth token over non-https URL (${href})`)
+    }
+    const headers = new Headers(init?.headers)
+    headers.set('Authorization', `Bearer ${value}`)
+    return globalThis.fetch(url, { ...init, headers })
+  }
 }

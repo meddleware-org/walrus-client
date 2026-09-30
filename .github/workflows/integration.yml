@@ -8,6 +8,9 @@ on:
   schedule:
     - cron: '0 3 * * *' # 03:00 UTC nightly
 
+permissions:
+  contents: read
+
 jobs:
   localnet:
     name: walrus-client localnet suite
@@ -15,18 +18,18 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout walrus-client (into repos/walrus-client)
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: repos/walrus-client
 
       - name: Checkout access-gate-sui (sibling, for the localnet gate deploy)
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: meddleware-org/access-gate-sui
           ref: ${{ vars.ACCESS_GATE_REF || 'main' }}
           path: repos/access-gate-sui
 
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
 
@@ -34,8 +37,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -sSfL https://raw.githubusercontent.com/MystenLabs/suiup/main/install.sh | bash
-          "$HOME/.local/bin/suiup" install sui@testnet --yes || "$HOME/.local/bin/suiup" install sui@testnet
+          curl -fsSLo /tmp/suiup.tgz "https://github.com/MystenLabs/suiup/releases/download/v0.0.14/suiup-Linux-musl-x86_64.tar.gz"
+          echo "c0b9fea95d52c4c5855478c3ee56e58e446614f32300dbd41fcc637a2e09878a  /tmp/suiup.tgz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin" && tar -xzf /tmp/suiup.tgz -C "$HOME/.local/bin" suiup
+          "$HOME/.local/bin/suiup" install sui@testnet-v1.80.0 --yes
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           # localnet env creation is deferred to bootstrap-localnet.sh (runs after the testbed is up)
 

@@ -2,4 +2,6 @@
 .env.localnet
 .walrus-upstream/
 generated/
+# Dedicated Sui CLI state for the testbed (client.yaml + keystore) — never the operator's ~/.sui.
+.sui/
 *.log

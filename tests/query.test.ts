@@ -46,6 +46,22 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
     ])
   })
 
+  it('pages through every owned blob with the cursor', async () => {
+    const blob = (id: string) => ({
+      objectId: id,
+      type: '0xpkg::blob::Blob',
+      json: { blob_id: '1', size: '1', certified_epoch: 1, storage: { end_epoch: 9 } },
+    })
+    const listOwnedObjects = vi
+      .fn()
+      .mockResolvedValueOnce({ objects: [blob('0xa')], hasNextPage: true, cursor: 'c1' })
+      .mockResolvedValueOnce({ objects: [blob('0xb')], hasNextPage: false, cursor: null })
+    const client = { core: { listOwnedObjects } } as any
+    const blobs = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
+    expect(blobs.map((b) => b.objectId)).toEqual(['0xa', '0xb'])
+    expect(listOwnedObjects).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'c1' }))
+  })
+
   it('tolerates the nested `.fields` shape (transport robustness)', async () => {
     const { client } = makeSuiClient([
       {
