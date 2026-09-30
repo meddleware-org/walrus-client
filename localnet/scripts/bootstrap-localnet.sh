@@ -66,8 +66,8 @@ STAKING_OBJECT="$(harvest staking_object)"
 # Keep only real 0x ids — localnet has no WAL exchange, so the deploy prints `exchange_object: None`,
 # which must NOT end up in the config (Walrus rejects it as an invalid ObjectID).
 EXCHANGE_OBJECTS="$(printf '%s\n' "${DEPLOY_TXT}" | { grep -E '^[[:space:]]*exchange_object' || true; } | awk '{print $2}' | { grep -E '^0x[0-9a-fA-F]+$' || true; })"
-[ -n "${SYSTEM_OBJECT}" ] && [ -n "${STAKING_OBJECT}" ] || die "could not harvest system_object/staking_object from the deploy output. First lines of deploy:
-$(printf '%s\n' "${DEPLOY_TXT}" | head -20)"
+if [ -z "${SYSTEM_OBJECT}" ] || [ -z "${STAKING_OBJECT}" ]; then die "could not harvest system_object/staking_object from the deploy output. First lines of deploy:
+$(printf '%s\n' "${DEPLOY_TXT}" | head -20)"; fi
 
 log "harvested system_object=${SYSTEM_OBJECT} staking_object=${STAKING_OBJECT}"
 
