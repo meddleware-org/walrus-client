@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.20] - 2026-09-30
+
+### Added
+
+- **`@meddleware/walrus-client/flow`** — the headless upload orchestrator `runBlobUpload`, moved
+  from walrus-ui.
+  - Relay access: `createGatedAccess` and `GatedAccess`.
+  - Error conventions: `attachCertifyRetry` / `getCertifyRetry` and
+    `attachDuplicateExisting` / `getDuplicateExisting`.
+  - `isRedeemedConflict`, which also matches the message form and wrapped causes.
+  - Persistence helpers: `consumeStorageKey`, `pendingCertifyKey`, `savePendingCertify`,
+    `loadPendingCertifies`, `clearPendingCertify`.
+  - Types: `UploadProgress`, `UploadStepKey`, `BlobUploadResult`, `ExistingCopy`, `StorageLike`.
+  - A redeemed consume now retries the upload on the same registration instead of registering
+    again.
+  - An unlimited pass signs without consuming.
+- **`@meddleware/walrus-client/http`** — `storeBlobViaPublisher`, `readBlob` and
+  `requireHttpsEndpoint`, moved from seal-ui.
+
+### Changed
+
+- `@meddleware/nft-gate-client` `^0.0.13` (wire protocol only).
+
 ## [0.0.13] - 2026-09-17
 
 ### Added

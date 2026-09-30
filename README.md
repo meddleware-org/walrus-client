@@ -182,6 +182,65 @@ const client = createWalrusClient({
 })
 ```
 
+### Upload orchestrator (`@meddleware/walrus-client/flow`)
+
+`runBlobUpload` runs the upload an app shows the user: encode → existing-copy precheck → register →
+upload → certify. It reports structured progress (`UploadProgress`) as it goes. The subpath never
+imports the package root statically, so the wasm client stays out of an app's eager bundle.
+
+```typescript
+import { consumeStorageKey, createGatedAccess, runBlobUpload } from '@meddleware/walrus-client/flow'
+import { buildConsumeTx } from '@meddleware/access-gate-client'
+
+const access = createGatedAccess({
+  storage: localStorage,
+  key: consumeStorageKey('testnet', gate.gateId, address),
+  relayHost,
+  address,
+  nftId,
+  singleUse: usesRemaining !== null,
+  buildConsume: (id, nonce) => buildConsumeTx(gate, id, nonce),
+  signAndExecute: (tx) => executor.signAndExecute(tx),
+  waitForTransaction: (d) => executor.waitForTransaction(d),
+  sign: signPersonalMessage,
+})
+
+const { blobId, url } = await runBlobUpload({
+  bytes, network: 'testnet', relayHost, address, epochs: 53, wasmUrl,
+  executor, suiClient, access, onStatus: (p) => show(p),
+})
+```
+
+- **Register is never resumed.** The relay's tip and nonce live in the register transaction, and
+  the relay rejects an old one.
+- **A single-use consume is never wasted.**
+  - Its digest is persisted before the upload and reused after an interruption.
+  - It is cleared once the upload lands.
+  - A `409 redeemed` spends one new use and retries the upload on the same registration.
+- **Errors can carry an action.**
+  - `getDuplicateExisting(err)` returns an existing owned copy found before registering (offer
+    Extend or Certify).
+  - `getCertifyRetry(err)` re-certifies after a certify-only failure without re-uploading.
+- **Certificates can be persisted.** `savePendingCertify` / `loadPendingCertifies` /
+  `clearPendingCertify` keep an uploaded-but-uncertified blob's certificate, so certify can be
+  finished later.
+
+### HTTP publisher and aggregator (`@meddleware/walrus-client/http`)
+
+For opaque bytes such as Seal ciphertext, a publisher can store the blob and send the `Blob` object
+to the user. No wallet, wasm or `@mysten/walrus` is needed.
+
+```typescript
+import { storeBlobViaPublisher, readBlob } from '@meddleware/walrus-client/http'
+
+const blobId = await storeBlobViaPublisher(bytes, { publisher, epochs: 5, sendObjectTo: address, maxBytes })
+const back = await readBlob(blobId, { aggregator })
+```
+
+- Blobs are stored **permanent**.
+- Reads ask the aggregator for a strict consistency check.
+- Endpoints must be https (http is allowed only for localhost).
+
 ### Re-exports
 
 - `WalrusFile` — Construct files from `Uint8Array`, `Blob`, or `string`
