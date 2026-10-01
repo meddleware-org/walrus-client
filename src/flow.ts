@@ -262,6 +262,7 @@ export interface BlobUploadFlow {
 /** Client options this flow passes (a subset of `CreateWalrusClientOptions`). */
 export interface FlowClientOptions {
   network: 'testnet' | 'mainnet'
+  rpcUrl?: string
   wasmUrl?: string
   uploadRelayHost: string
   uploadRelayMaxTipMist?: number
@@ -281,6 +282,8 @@ export interface RunBlobUploadDeps {
   relayHost: string
   /** Owner and sender (the connected wallet account). */
   address: string
+  /** Sui gRPC endpoint for the Walrus client (default: the public Mysten full node). */
+  rpcUrl?: string
   /** Wasm bundle URL for the Walrus client. */
   wasmUrl?: string
   /** Cap on the relay tip in MIST. */
@@ -331,6 +334,7 @@ export async function runBlobUpload(deps: RunBlobUploadDeps): Promise<BlobUpload
 
   const client = createWalrusClient({
     network: deps.network,
+    ...(deps.rpcUrl ? { rpcUrl: deps.rpcUrl } : {}),
     wasmUrl: deps.wasmUrl,
     uploadRelayHost: deps.relayHost,
     uploadRelayMaxTipMist: deps.maxTipMist,

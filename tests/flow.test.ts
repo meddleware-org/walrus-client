@@ -186,6 +186,12 @@ describe('runBlobUpload', () => {
     expect(certTx.setSenderIfNotSet).toHaveBeenCalledWith('0xabc')
   })
 
+  it('forwards an RPC endpoint when given', async () => {
+    const { mod } = makeModule()
+    await runBlobUpload({ ...baseDeps, rpcUrl: 'https://rpc.example', executor: makeExecutor(), loadWalrusClient: async () => mod })
+    expect(mod.createWalrusClient.mock.calls[0][0]).toMatchObject({ rpcUrl: 'https://rpc.example' })
+  })
+
   it('forwards relay host, tip cap and wasm url, and no auth for an open relay', async () => {
     const { mod } = makeModule()
     await runBlobUpload({ ...baseDeps, executor: makeExecutor(), loadWalrusClient: async () => mod })
