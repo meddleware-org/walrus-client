@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.23] - 2026-10-02
+
+### Changed
+
+- `fetchOwnedWalrusBlobs` pages at most `MAX_OWNED_BLOB_PAGES` (100) and throws past it instead of
+  looping on a node that always reports another page; objects are re-checked against the exact
+  (normalised) Blob type; a blob with a missing or malformed id, size or end epoch is skipped
+  instead of listed with an invented value (an end epoch of 0 used to show it as expired).
+- `readBlob` caps the bytes it reads (`maxBytes`, default 100 MiB), on the declared length and while
+  streaming.
+- `storeBlobViaPublisher` requires a well-formed blob id in the publisher's response.
+- `loadPendingCertifies` validates each stored entry field by field (the key must equal its
+  `blobObjectId`) and drops malformed ones.
+- `walrusBlobUrl` encodes the blob id.
+- `noUncheckedIndexedAccess` is on; `uploadFile` throws if the SDK returns no write result.
+
 ## [0.0.22] - 2026-10-02
 
 ### Changed

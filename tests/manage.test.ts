@@ -43,7 +43,7 @@ describe('extendBlobLifetime', () => {
   it('threads ExtendOptions (epochs form) and returns the digest', async () => {
     const { client, calls } = fakeClient()
     const res = await extendBlobLifetime(client, 'OBJ', signer, { epochs: 10 })
-    expect(calls.executeExtendBlobTransaction[0]).toMatchObject({
+    expect(calls.executeExtendBlobTransaction![0]).toMatchObject({
       blobObjectId: 'OBJ',
       signer,
       epochs: 10,
@@ -54,7 +54,7 @@ describe('extendBlobLifetime', () => {
   it('threads ExtendOptions (endEpoch form)', async () => {
     const { client, calls } = fakeClient()
     await extendBlobLifetime(client, 'OBJ', signer, { endEpoch: 500 })
-    expect(calls.executeExtendBlobTransaction[0]).toMatchObject({ endEpoch: 500 })
+    expect(calls.executeExtendBlobTransaction![0]).toMatchObject({ endEpoch: 500 })
   })
 })
 
@@ -74,7 +74,7 @@ describe('certifyBlobTransaction', () => {
       blobObjectId: 'OBJ',
       certificate: 'CERT_B64',
     })
-    expect(calls.certifyBlobTransaction[0]).toEqual({
+    expect(calls.certifyBlobTransaction![0]).toEqual({
       blobId: 'BLOB',
       blobObjectId: 'OBJ',
       certificate: 'CERT_B64',
@@ -97,7 +97,7 @@ describe('setBlobAttributes / readBlobAttributes', () => {
   it('executes attribute write with signer and returns digest', async () => {
     const { client, calls } = fakeClient()
     const res = await setBlobAttributes(client, 'OBJ', signer, { color: 'blue', old: null })
-    expect(calls.executeWriteBlobAttributesTransaction[0]).toMatchObject({
+    expect(calls.executeWriteBlobAttributesTransaction![0]).toMatchObject({
       blobObjectId: 'OBJ',
       signer,
       attributes: { color: 'blue', old: null },

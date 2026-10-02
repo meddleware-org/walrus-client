@@ -122,7 +122,7 @@ describe('runBlobUpload', () => {
     const executor = makeExecutor()
     await runBlobUpload({ ...baseDeps, executor, loadWalrusClient: async () => mod })
     expect(flow.register).toHaveBeenCalledTimes(1)
-    const regDigest = (await executor.signAndExecute.mock.results[0].value).digest
+    const regDigest = (await executor.signAndExecute.mock.results[0]!.value).digest
     expect(flow.upload).toHaveBeenCalledWith({ digest: regDigest, deletable: false })
   })
 
@@ -189,13 +189,13 @@ describe('runBlobUpload', () => {
   it('forwards an RPC endpoint when given', async () => {
     const { mod } = makeModule()
     await runBlobUpload({ ...baseDeps, rpcUrl: 'https://rpc.example', executor: makeExecutor(), loadWalrusClient: async () => mod })
-    expect(mod.createWalrusClient.mock.calls[0][0]).toMatchObject({ rpcUrl: 'https://rpc.example' })
+    expect(mod.createWalrusClient.mock.calls[0]![0]).toMatchObject({ rpcUrl: 'https://rpc.example' })
   })
 
   it('forwards relay host, tip cap and wasm url, and no auth for an open relay', async () => {
     const { mod } = makeModule()
     await runBlobUpload({ ...baseDeps, executor: makeExecutor(), loadWalrusClient: async () => mod })
-    const opts = mod.createWalrusClient.mock.calls[0][0] as Record<string, unknown>
+    const opts = mod.createWalrusClient.mock.calls[0]![0] as Record<string, unknown>
     expect(opts).toMatchObject({ network: 'testnet', wasmUrl: 'wasm://bundle', uploadRelayHost: 'https://relay.example', uploadRelayMaxTipMist: 50_000_000 })
     expect(opts.uploadRelayAuthToken).toBeUndefined()
   })
@@ -216,9 +216,9 @@ describe('runBlobUpload with gated access', () => {
     const progress: UploadProgress[] = []
     await runBlobUpload({ ...baseDeps, access: gate, executor: makeExecutor(), onStatus: (p) => progress.push(p), loadWalrusClient: async () => mod })
     expect(gate.token).toHaveBeenCalledWith(false)
-    const provider = (mod.createWalrusClient.mock.calls[0][0] as { uploadRelayAuthToken: () => string }).uploadRelayAuthToken
+    const provider = (mod.createWalrusClient.mock.calls[0]![0] as { uploadRelayAuthToken: () => string }).uploadRelayAuthToken
     expect(provider()).toBe('tok-1')
-    expect(progress[0].step).toBe('access')
+    expect(progress[0]!.step).toBe('access')
     expect(gate.uploaded).toHaveBeenCalledTimes(1)
   })
 
@@ -231,8 +231,8 @@ describe('runBlobUpload with gated access', () => {
     expect(gate.token.mock.calls).toEqual([[false], [true]])
     expect(flow.register).toHaveBeenCalledTimes(1)
     expect(flow.upload).toHaveBeenCalledTimes(2)
-    expect(flow.upload.mock.calls[1][0].digest).toBe(flow.upload.mock.calls[0][0].digest)
-    const provider = (mod.createWalrusClient.mock.calls[0][0] as { uploadRelayAuthToken: () => string }).uploadRelayAuthToken
+    expect(flow.upload.mock.calls[1]![0].digest).toBe(flow.upload.mock.calls[0]![0].digest)
+    const provider = (mod.createWalrusClient.mock.calls[0]![0] as { uploadRelayAuthToken: () => string }).uploadRelayAuthToken
     expect(provider()).toBe('tok-2')
   })
 
@@ -362,7 +362,7 @@ describe('persistence keys and pending certifications', () => {
     savePendingCertify(storage, key, entry)
     const map = loadPendingCertifies(storage, key)
     expect(map.OBJ1).toMatchObject(entry)
-    expect(typeof map.OBJ1.savedAt).toBe('number')
+    expect(typeof map.OBJ1!.savedAt).toBe('number')
     clearPendingCertify(storage, key, 'OBJ1')
     expect(storage.getItem(key)).toBeNull()
   })
@@ -374,6 +374,24 @@ describe('persistence keys and pending certifications', () => {
     savePendingCertify(storage, key, { ...entry, blobId: 'BLOB2', blobObjectId: 'OBJ2' })
     clearPendingCertify(storage, key, 'OBJ1')
     expect(Object.keys(loadPendingCertifies(storage, key))).toEqual(['OBJ2'])
+  })
+
+  it('drops malformed or mis-keyed stored entries (browser storage is untrusted)', () => {
+    const storage = fakeStorage()
+    const key = pendingCertifyKey('testnet', '0xabc')
+    const good = { ...entry, savedAt: 1 }
+    storage.setItem(
+      key,
+      JSON.stringify({
+        OBJ1: good,
+        OBJ2: { ...good, blobObjectId: 'OTHER' }, // key and object id disagree
+        OBJ3: { ...good, blobObjectId: 'OBJ3', deletable: 'no' },
+        OBJ4: { ...good, blobObjectId: 'OBJ4', extra: '<script>' },
+      }),
+    )
+    const map = loadPendingCertifies(storage, key)
+    expect(Object.keys(map).sort()).toEqual(['OBJ1', 'OBJ4'])
+    expect(map.OBJ4).toEqual({ ...good, blobObjectId: 'OBJ4' }) // copied field by field
   })
 
   it('returns an empty map for missing or corrupt data', () => {

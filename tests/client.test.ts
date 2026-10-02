@@ -75,7 +75,7 @@ describe('createWalrusClient upload-relay wiring', () => {
         method: 'POST',
         headers: { 'content-type': 'application/octet-stream' },
       })
-      const [, init] = spy.mock.calls[0]
+      const [, init] = spy.mock.calls[0]!
       const sent = new Headers((init as RequestInit).headers)
       expect(sent.get('authorization')).toBe('Bearer secret-token')
       // Pre-existing headers are preserved.
@@ -98,12 +98,12 @@ describe('createWalrusClient upload-relay wiring', () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
     try {
       await relayFetch('https://relay.example.com/v1/blob-upload-relay', { method: 'POST' })
-      expect(new Headers((spy.mock.calls[0][1] as RequestInit).headers).get('authorization')).toBe(
+      expect(new Headers((spy.mock.calls[0]![1] as RequestInit).headers).get('authorization')).toBe(
         'Bearer token-1',
       )
       current = 'token-2' // e.g. a fresh challenge signed on retry
       await relayFetch('https://relay.example.com/v1/blob-upload-relay', { method: 'POST' })
-      expect(new Headers((spy.mock.calls[1][1] as RequestInit).headers).get('authorization')).toBe(
+      expect(new Headers((spy.mock.calls[1]![1] as RequestInit).headers).get('authorization')).toBe(
         'Bearer token-2',
       )
     } finally {
@@ -138,7 +138,7 @@ describe('createWalrusClient upload-relay wiring', () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
     try {
       await relayFetch('https://aggregator.example.com/v1/blobs/x')
-      expect(new Headers((spy.mock.calls[0][1] as RequestInit | undefined)?.headers).get('authorization')).toBeNull()
+      expect(new Headers((spy.mock.calls[0]![1] as RequestInit | undefined)?.headers).get('authorization')).toBeNull()
     } finally {
       spy.mockRestore()
     }

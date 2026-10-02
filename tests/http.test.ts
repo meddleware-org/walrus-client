@@ -53,7 +53,7 @@ describe('storeBlobViaPublisher', () => {
     await expect(storeBlobViaPublisher(new Uint8Array([1]), opts(async () => new Response('nope', { status: 500 })))).rejects.toThrow(
       /publisher error 500: nope/,
     )
-    await expect(storeBlobViaPublisher(new Uint8Array([1]), opts(async () => Response.json({})))).rejects.toThrow(/no blob id/)
+    await expect(storeBlobViaPublisher(new Uint8Array([1]), opts(async () => Response.json({})))).rejects.toThrow(/no valid blob id/)
   })
 
   it('refuses a plain-http publisher', async () => {
@@ -71,6 +71,30 @@ describe('readBlob', () => {
     const [url] = fetchSpy.mock.calls[0] as unknown as [URL]
     expect(url.pathname).toBe('/v1/blobs/abc%2Fdef')
     expect(url.searchParams.get('strict_consistency_check')).toBe('true')
+  })
+
+  it('refuses a blob over maxBytes, by declared length or by bytes read', async () => {
+    const big = new Uint8Array(10)
+    const declared = vi.fn(async () => new Response(big, { headers: { 'content-length': '10' } }))
+    await expect(
+      readBlob('x', { aggregator: 'https://a.example', maxBytes: 5, fetch: declared as unknown as typeof fetch }),
+    ).rejects.toThrow(/10 bytes; at most 5/)
+    // No (or a false) Content-Length: the stream is counted.
+    const streamed = vi.fn(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(new Uint8Array(4))
+          c.enqueue(new Uint8Array(4))
+          c.close()
+        },
+      })
+      return new Response(body)
+    })
+    await expect(
+      readBlob('x', { aggregator: 'https://a.example', maxBytes: 5, fetch: streamed as unknown as typeof fetch }),
+    ).rejects.toThrow(/exceeds 5 bytes/)
+    const ok = await readBlob('x', { aggregator: 'https://a.example', maxBytes: 8, fetch: streamed as unknown as typeof fetch })
+    expect(ok.length).toBe(8)
   })
 
   it('surfaces an aggregator error', async () => {

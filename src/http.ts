@@ -58,16 +58,23 @@ export async function storeBlobViaPublisher(bytes: Uint8Array, opts: StoreViaPub
   })
   if (!res.ok) throw new Error(`Walrus publisher error ${res.status}: ${(await res.text()).slice(0, 300)}`)
   const json = (await res.json()) as PublishResponse
-  const blobId = json.newlyCreated?.blobObject?.blobId ?? json.alreadyCertified?.blobId
-  if (!blobId) throw new Error('Walrus publisher returned no blob id.')
+  const blobId = json?.newlyCreated?.blobObject?.blobId ?? json?.alreadyCertified?.blobId
+  if (typeof blobId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(blobId)) {
+    throw new Error('Walrus publisher returned no valid blob id.')
+  }
   return blobId
 }
+
+/** Default cap on a blob read through {@link readBlob}: the operator relay's edge cap (100 MiB). */
+export const DEFAULT_READ_MAX_BYTES = 100 * 1024 * 1024
 
 export interface ReadBlobOptions {
   /** Aggregator base URL (https). */
   aggregator: string
   /** Default 60 000 ms. */
   timeoutMs?: number
+  /** Largest blob accepted, checked on the declared length and on the bytes read (default 100 MiB). */
+  maxBytes?: number
   fetch?: typeof fetch
 }
 
@@ -75,12 +82,36 @@ export interface ReadBlobOptions {
  * Read a blob's bytes from an aggregator, with `strict_consistency_check` so the aggregator verifies
  * the blob was encoded consistently before serving it.
  *
- * @throws {Error} for a non-https aggregator, an aggregator error or a timeout.
+ * @throws {Error} for a non-https aggregator, an aggregator error, a timeout or a blob over `maxBytes`.
  */
 export async function readBlob(blobId: string, opts: ReadBlobOptions): Promise<Uint8Array> {
   const url = new URL(`/v1/blobs/${encodeURIComponent(blobId)}`, requireHttpsEndpoint(opts.aggregator, 'Walrus aggregator'))
   url.searchParams.set('strict_consistency_check', 'true')
   const res = await (opts.fetch ?? fetch)(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 60_000) })
   if (!res.ok) throw new Error(`Walrus aggregator error ${res.status}`)
-  return new Uint8Array(await res.arrayBuffer())
+  const max = opts.maxBytes ?? DEFAULT_READ_MAX_BYTES
+  const declared = Number(res.headers.get('content-length') ?? NaN)
+  if (Number.isFinite(declared) && declared > max) throw new Error(`The blob is ${declared} bytes; at most ${max} are read.`)
+  if (!res.body) return new Uint8Array(0)
+  // Count while reading: a missing or false Content-Length must not let an unbounded body through.
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > max) {
+      await reader.cancel()
+      throw new Error(`The blob exceeds ${max} bytes.`)
+    }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(total)
+  let at = 0
+  for (const c of chunks) {
+    out.set(c, at)
+    at += c.byteLength
+  }
+  return out
 }

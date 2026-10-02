@@ -129,16 +129,44 @@ export function pendingCertifyKey(network: string, address: string): string {
   return `mw:walrus:pendingCertify:${network}:${address}`
 }
 
-/** The pending-certify map (keyed by blobObjectId); empty if none or corrupt. */
+/** One stored entry, copied field by field, or `null` if it is not a well-formed entry for `key`. */
+function pendingEntry(key: string, v: unknown): PendingCertify | null {
+  if (!v || typeof v !== 'object') return null
+  const e = v as Record<string, unknown>
+  if (
+    typeof e.blobId !== 'string' ||
+    typeof e.blobObjectId !== 'string' ||
+    e.blobObjectId !== key ||
+    typeof e.certificate !== 'string' ||
+    typeof e.deletable !== 'boolean' ||
+    typeof e.savedAt !== 'number'
+  ) {
+    return null
+  }
+  return { blobId: e.blobId, blobObjectId: e.blobObjectId, certificate: e.certificate, deletable: e.deletable, savedAt: e.savedAt }
+}
+
+/**
+ * The pending-certify map (keyed by blobObjectId); empty if none or corrupt. Browser storage is
+ * untrusted: malformed entries are dropped (a tampered entry can at worst fail its own certify
+ * transaction on-chain).
+ */
 export function loadPendingCertifies(storage: StorageLike, key: string): Record<string, PendingCertify> {
   const raw = storage.getItem(key)
-  if (!raw) return {}
+  if (!raw || raw.length > 1_000_000) return {}
+  let v: unknown
   try {
-    const v = JSON.parse(raw) as Record<string, PendingCertify>
-    return v && typeof v === 'object' && !Array.isArray(v) ? v : {}
+    v = JSON.parse(raw)
   } catch {
     return {}
   }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+  const out: Record<string, PendingCertify> = {}
+  for (const [id, entry] of Object.entries(v as Record<string, unknown>)) {
+    const parsed = pendingEntry(id, entry)
+    if (parsed) out[id] = parsed
+  }
+  return out
 }
 
 /** Persist one pending certification (merged into the map by blobObjectId). */

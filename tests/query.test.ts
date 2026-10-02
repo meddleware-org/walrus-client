@@ -79,12 +79,38 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
       {
         objectId: '0xobj2',
         type: '0xpkg::blob::Blob',
-        json: { blob_id: '7', size: '10', certified_epoch: null, storage: {} },
+        json: { blob_id: '7', size: '10', certified_epoch: null, storage: { end_epoch: '5' } },
       },
     ])
     const [blob] = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
-    expect(blob.certified).toBe(false)
-    expect(blob.endEpoch).toBe(0)
+    expect(blob!.certified).toBe(false)
+    expect(blob!.endEpoch).toBe(5)
+  })
+
+  it('never invents a value: a blob missing its size or end epoch is skipped', async () => {
+    const { client } = makeSuiClient([
+      { objectId: '0xa', type: '0xpkg::blob::Blob', json: { blob_id: '7', size: '10', storage: {} } },
+      { objectId: '0xb', type: '0xpkg::blob::Blob', json: { blob_id: '7', storage: { end_epoch: '5' } } },
+      { objectId: '0xc', type: '0xpkg::blob::Blob', json: { blob_id: '7', size: 'ten', storage: { end_epoch: '5' } } },
+    ])
+    expect(await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')).toEqual([])
+  })
+
+  it('skips objects that are not exactly the Blob type, comparing normalised types', async () => {
+    const { client } = makeSuiClient([
+      { objectId: '0xa', type: '0xevil::blob::Blob', json: { blob_id: '7', size: '1', storage: { end_epoch: '5' } } },
+      { objectId: '0xb', type: `0x${'0'.repeat(61)}pkg::blob::Blob`.replace('pkg', 'abc'), json: { blob_id: '7', size: '1', storage: { end_epoch: '5' } } },
+      { objectId: '0xc', type: '0xPKG::blob::Blob', json: { blob_id: '8', size: '1', storage: { end_epoch: '5' } } },
+    ])
+    const blobs = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
+    expect(blobs.map((b) => b.objectId)).toEqual(['0xc'])
+  })
+
+  it('throws instead of paging forever', async () => {
+    const listOwnedObjects = vi.fn().mockResolvedValue({ objects: [], hasNextPage: true, cursor: 'again' })
+    const client = { core: { listOwnedObjects } } as any
+    await expect(fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')).rejects.toThrow(/more than 100 pages/)
+    expect(listOwnedObjects).toHaveBeenCalledTimes(100)
   })
 
   it('skips entries with missing json or unparseable fields', async () => {

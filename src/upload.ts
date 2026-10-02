@@ -63,6 +63,7 @@ export async function uploadBytes(
     deletable: options.deletable ?? false,
     signer,
   })
+  if (!result) throw new Error('Walrus returned no write result for the file.')
   return { blobId: result.blobId, blobObjectId: result.id }
 }
 

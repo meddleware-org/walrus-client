@@ -47,7 +47,7 @@ export function walrusBlobUrl(
   aggregatorHost?: string,
 ): string {
   const host = aggregatorHost ?? WALRUS_AGGREGATOR_HOSTS[network]
-  return `${host}/v1/blobs/${blobId}`
+  return `${host}/v1/blobs/${encodeURIComponent(blobId)}`
 }
 
 /** Return the Walrus on-chain package config for the given network. */
