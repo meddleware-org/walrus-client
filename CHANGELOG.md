@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.22] - 2026-10-02
+
+### Changed
+
+- `@meddleware/nft-gate-client` 0.0.14: relay challenge requests time out (10 s by default,
+  `timeoutMs` on `fetchRelayChallenge`), require an `https:` relay host (loopback `http:` allowed)
+  and validate the response. The gated upload flow no longer waits forever on a hung gateway.
+
 ## [0.0.21] - 2026-10-01
 
 ### Added

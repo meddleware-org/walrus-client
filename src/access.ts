@@ -46,14 +46,16 @@ export function buildAccessProofToken(proof: AccessProofInput): string {
 
 /**
  * Fetch a fresh challenge from the gateway's `GET /v1/challenge` endpoint.
- * Tolerates both `expiresAt` (camelCase) and `expires_at` (snake_case) response shapes.
+ * Tolerates both `expiresAt` (camelCase) and `expires_at` (snake_case) response shapes. The relay
+ * host must be `https:` (loopback `http:` allowed); the request aborts after `opts.timeoutMs`
+ * (default 10 s) or on `opts.signal`.
  *
  * @throws {Error} if the network request fails or the gateway returns a non-2xx status.
  * @throws {Error} if the response body is missing the required `nonce` field.
  */
 export function fetchRelayChallenge(
   relayHost: string,
-  opts: { signal?: AbortSignal } = {},
+  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<RelayChallenge> {
   return fetchChallenge(relayHost, opts)
 }
