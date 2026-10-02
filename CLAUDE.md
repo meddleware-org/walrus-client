@@ -28,6 +28,7 @@
 - **`./http` imports nothing from `@mysten/*`.** It is plain `fetch` against a publisher and
   aggregator, https only (http only for localhost), and stores blobs permanent.
 - **`LONG_TERM_EPOCHS` and `MAX_SINGLE_RESERVATION_EPOCHS` are not arbitrary.** They reflect Walrus protocol constraints. Update them only when the Walrus protocol changes `max_epochs_ahead`.
+- **Browser storage through `browserStorage()`.** Apps pass it (never `window.localStorage`, whose access can throw) to the flow's storage ports.
 - **No secrets in source.** Relay auth tokens, keypairs, and credentials are caller-supplied at runtime. Never hardcode them.
 - **0BSD licence.** Do not change the licence.
 - **`uploadRelayMaxTipMist` is a library default, not a hardcoded income value.** The `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST` (50,000,000 MIST = 0.05 SUI) default in `client.ts` bounds relay tip payments: ~8× the worst-case tip of the operator's linear relay at the 100 MiB edge cap, so a hostile relay is bounded but no legitimate upload fails (the previous 1,000,000 default sat *below* the operator relay's minimum tip). Callers override it via `CreateWalrusClientOptions`. Do not treat it as a commission parameter — the on-chain commission is enforced by the `PlatformConfig` object in `access_gate`.

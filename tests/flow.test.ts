@@ -1,6 +1,6 @@
 // Unit tests for the headless upload orchestrator and its resume conventions. A fake root module is
 // injected via `loadWalrusClient`, so no wasm, wallet or network is touched.
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { decodeAccessProof } from '@meddleware/nft-gate-client'
 import {
   clearPendingCertify,
@@ -10,6 +10,7 @@ import {
   getDuplicateExisting,
   isRedeemedConflict,
   loadPendingCertifies,
+  browserStorage,
   pendingCertifyKey,
   runBlobUpload,
   savePendingCertify,
@@ -404,3 +405,37 @@ describe('persistence keys and pending certifications', () => {
     expect(loadPendingCertifies(storage, key)).toEqual({})
   })
 })
+
+describe('browserStorage', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('keeps values in memory when localStorage is unavailable (blocked site data)', () => {
+    vi.stubGlobal('window', {
+      get localStorage(): Storage {
+        throw new DOMException('blocked', 'SecurityError')
+      },
+    })
+    const storage = browserStorage()
+    expect(storage.getItem('k')).toBeNull()
+    storage.setItem('k', 'v')
+    expect(storage.getItem('k')).toBe('v')
+    storage.removeItem('k')
+    expect(storage.getItem('k')).toBeNull()
+  })
+
+  it('uses localStorage when it works', () => {
+    const map = new Map<string, string>()
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (k: string) => map.get(k) ?? null,
+        setItem: (k: string, v: string) => void map.set(k, v),
+        removeItem: (k: string) => void map.delete(k),
+      },
+    })
+    const storage = browserStorage()
+    storage.setItem('k', 'v')
+    expect(map.get('k')).toBe('v')
+    expect(browserStorage().getItem('k')).toBe('v') // survives a new instance (a reload)
+  })
+})
+

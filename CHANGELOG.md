@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.24] - 2026-10-02
+
+### Added
+
+- `browserStorage()` (`./flow`): the page's `localStorage` as a `StorageLike` that never throws; where
+  storage is unavailable (blocked site data, private modes, sandboxed frames) values stay in memory for
+  the page. Apps pass it to the flow helpers instead of `window.localStorage`, whose mere access can
+  throw.
 
 ### Changed
 

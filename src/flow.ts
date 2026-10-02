@@ -124,6 +124,50 @@ export interface PendingCertify {
   savedAt: number
 }
 
+/**
+ * The page's `localStorage` as a {@link StorageLike} that never throws. Where storage is unavailable
+ * (blocked site data, some private modes, sandboxed frames — even reading `window.localStorage` can
+ * throw) values are kept in memory for this page instead: an interrupted flow then cannot resume
+ * after a reload, but nothing breaks. Pass this, not `window.localStorage`, to the flow helpers.
+ */
+export function browserStorage(): StorageLike {
+  const memory = new Map<string, string>()
+  const local = (): StorageLike | null => {
+    try {
+      return typeof window !== 'undefined' ? window.localStorage : null
+    } catch {
+      return null
+    }
+  }
+  return {
+    getItem(key) {
+      try {
+        const s = local()
+        if (s) return s.getItem(key)
+      } catch {
+        // fall through to memory
+      }
+      return memory.get(key) ?? null
+    },
+    setItem(key, value) {
+      memory.set(key, value)
+      try {
+        local()?.setItem(key, value)
+      } catch {
+        // kept in memory only
+      }
+    },
+    removeItem(key) {
+      memory.delete(key)
+      try {
+        local()?.removeItem(key)
+      } catch {
+        // nothing persisted to remove
+      }
+    },
+  }
+}
+
 /** Stable per-(network, address) key for pending certifications. */
 export function pendingCertifyKey(network: string, address: string): string {
   return `mw:walrus:pendingCertify:${network}:${address}`
