@@ -20,6 +20,7 @@
     "src",
     "CHANGELOG.md"
   ],
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
     "./flow": "./src/flow.ts",
