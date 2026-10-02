@@ -32,6 +32,11 @@
 - **0BSD licence.** Do not change the licence.
 - **`uploadRelayMaxTipMist` is a library default, not a hardcoded income value.** The `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST` (50,000,000 MIST = 0.05 SUI) default in `client.ts` bounds relay tip payments: ~8× the worst-case tip of the operator's linear relay at the 100 MiB edge cap, so a hostile relay is bounded but no legitimate upload fails (the previous 1,000,000 default sat *below* the operator relay's minimum tip). Callers override it via `CreateWalrusClientOptions`. Do not treat it as a commission parameter — the on-chain commission is enforced by the `PlatformConfig` object in `access_gate`.
 - **`access.ts` imports from `@meddleware/nft-gate-client`.** The Walrus-specific aliases (`RelayChallenge`, `AccessProofInput`, `buildAccessProofToken`, `fetchRelayChallenge`) are thin re-exports kept for API stability. The unique piece is `createRelayAccessToken` (one-shot: challenge → sign → encode).
+- **No ABI-drift test here (workspace B8).** This package builds no Move calls of its own: every
+  transaction comes from `@mysten/walrus`, which resolves the Walrus system and staking objects from
+  `TESTNET_/MAINNET_WALRUS_PACKAGE_CONFIG` at run time and tracks their upgrades itself. Drift shows
+  up as an `@mysten/walrus` release, so keep that dependency current instead. Add a drift test (as in
+  access-gate-client) if a direct `tx.moveCall` is ever added.
 
 ---
 
