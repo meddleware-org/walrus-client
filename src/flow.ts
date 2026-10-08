@@ -5,15 +5,19 @@
 // This module must not pull `@mysten/walrus` (wasm) into an app's eager bundle: it never imports
 // the package root statically, only lazily through `loadWalrusClient` (default: a dynamic import).
 //
-// Register is ALWAYS performed, never resumed. With an upload relay (required for browser uploads)
-// the SDK embeds the relay tip and a per-encode nonce inside the register transaction, and the relay
-// rejects a stale `tx_id` as "the received transaction is too old". Each attempt re-encodes (free)
-// and registers fresh. Only the single-use consume digest is resumable: it is a permanent on-chain
-// token, redeemed by the gateway only when an upload succeeds.
-import { encodeAccessProof, personalMessageForNonce } from '@meddleware/nft-gate-client'
-import type { PersonalMessageSigner } from '@meddleware/nft-gate-client'
+// Register is ALWAYS performed fresh for a new upload, never resumed across page loads. With an
+// upload relay (required for browser uploads) the SDK embeds the relay tip and a per-encode nonce
+// inside the register transaction, and the relay rejects a stale `tx_id` as "the received
+// transaction is too old". Within the relay's freshness window, though, a FAILED UPLOAD is retried on
+// the same registration (bounded, with a fresh access token each time), so a transient relay or
+// gateway error never costs a second paid registration; the thrown error then carries `uploadRetry`.
+// Only the single-use consume digest is resumable across loads: it is a permanent on-chain token,
+// redeemed by the gateway only when an upload succeeds.
+import { buildAccessProof, isTransactionDigest } from '@meddleware/nft-gate-client'
+import type { PersonalMessageSigner, SuiNetwork } from '@meddleware/nft-gate-client'
 import type { ClientWithCoreApi } from '@mysten/sui/client'
 import { fetchRelayChallenge } from './access.js'
+import { assertEpochs } from './limits.js'
 
 // ── Progress ─────────────────────────────────────────────────────────────────
 
@@ -96,6 +100,65 @@ export function isRedeemedConflict(err: unknown, depth = 0): boolean {
   if (e.status === 409 && e.error?.code === 'redeemed') return true
   if (typeof e.message === 'string' && /\b409\b/.test(e.message) && /\bredeemed\b/.test(e.message)) return true
   return e.cause !== undefined && e.cause !== e && isRedeemedConflict(e.cause, depth + 1)
+}
+
+/** Shape of an error carrying an upload retry on the same registration. */
+export interface UploadRetryable<R> {
+  uploadRetry: () => Promise<R>
+}
+
+/** Attach an upload-retry closure to an error object (no-op for non-object throwables). */
+export function attachUploadRetry<R>(err: unknown, retry: () => Promise<R>): void {
+  if (err && typeof err === 'object') (err as Record<string, unknown>).uploadRetry = retry
+}
+
+/** The upload-retry closure attached to a thrown error, or `null`. */
+export function getUploadRetry<R>(err: unknown): (() => Promise<R>) | null {
+  const c = (err as Partial<UploadRetryable<R>> | null)?.uploadRetry
+  return typeof c === 'function' ? c : null
+}
+
+/** The HTTP status carried by an error, structured or in the message, anywhere in its `cause` chain. */
+export function httpStatusOf(err: unknown, depth = 0): number | null {
+  const e = err as { status?: unknown; message?: unknown; cause?: unknown } | null
+  if (!e || typeof e !== 'object' || depth > 8) return null
+  if (typeof e.status === 'number' && e.status >= 100 && e.status <= 599) return e.status
+  if (typeof e.message === 'string') {
+    const m = /\b([45]\d\d)\b/.exec(e.message)
+    if (m?.[1]) return Number(m[1])
+  }
+  return e.cause !== undefined && e.cause !== e ? httpStatusOf(e.cause, depth + 1) : null
+}
+
+function messageOf(err: unknown, depth = 0): string {
+  const e = err as { message?: unknown; cause?: unknown } | null
+  if (!e || typeof e !== 'object' || depth > 8) return ''
+  const own = typeof e.message === 'string' ? e.message : ''
+  return e.cause !== undefined && e.cause !== e ? `${own} ${messageOf(e.cause, depth + 1)}` : own
+}
+
+/**
+ * True if `err` is the gateway's "no matching single-use consume for this address" rejection: the
+ * digest it was given is not a successful consume of this gate by this address (or the node does not
+ * know it). A digest resumed from storage that draws this is dropped and consumed anew.
+ */
+export function isConsumeRejected(err: unknown): boolean {
+  return httpStatusOf(err) === 403 && /single-use consume/i.test(messageOf(err))
+}
+
+/** True if `err` is the gateway's "an upload for this consume is already in progress" (409 `leased`). */
+export function isLeasedConflict(err: unknown, depth = 0): boolean {
+  const e = err as { status?: number; error?: { code?: string }; message?: unknown; cause?: unknown } | null
+  if (!e || typeof e !== 'object' || depth > 8) return false
+  if (e.status === 409 && e.error?.code === 'leased') return true
+  if (typeof e.message === 'string' && /\b409\b/.test(e.message) && /in progress/i.test(e.message)) return true
+  return e.cause !== undefined && e.cause !== e && isLeasedConflict(e.cause, depth + 1)
+}
+
+/** True if `err` is a gateway rejection of the challenge/signature (401/403 about the nonce or signature). */
+export function isStaleProof(err: unknown): boolean {
+  const status = httpStatusOf(err)
+  return (status === 401 || status === 403) && /nonce|signature|access proof/i.test(messageOf(err))
 }
 
 // ── Persistence ──────────────────────────────────────────────────────────────
@@ -231,10 +294,23 @@ export function clearPendingCertify(storage: StorageLike, key: string, blobObjec
 
 // ── Gated relay access ───────────────────────────────────────────────────────
 
-/** Relay access for one upload: a token source, and a signal once the upload has landed. */
+/** Relay access for one upload: prepare once, mint a token per attempt, signal once it has landed. */
 export interface GatedAccess {
-  /** A fresh relay token. `forceFresh` spends a new use (after {@link isRedeemedConflict}). */
-  token(forceFresh: boolean): Promise<string>
+  /**
+   * Make sure a single-use consume exists (spending one use on-chain and persisting its digest if
+   * none is stored). Call it BEFORE register: the digest is persisted, so an interruption resumes
+   * instead of consuming again. A no-op for an unlimited pass.
+   */
+  prepare(): Promise<void>
+  /**
+   * A fresh relay token: a new challenge, signed over the gateway's origin, gate, network and the
+   * consume digest. Mint it right before the upload (a challenge lives minutes, not the time a
+   * register approval can take). `forceFresh` spends a new use first (after a redeemed conflict); an
+   * unusable stored digest (`dropStored`) is dropped and consumed anew.
+   */
+  token(opts?: { forceFresh?: boolean }): Promise<string>
+  /** True if the consume in use was resumed from storage rather than spent in this run. */
+  resumed(): boolean
   /** The upload landed: the stored consume is now spent for it. */
   uploaded(): void
 }
@@ -246,6 +322,10 @@ export interface GatedAccessPorts<Tx> {
   key: string
   relayHost: string
   address: string
+  /** The `Gate` the relay guards (`0x` + 64 lower-case hex): signed into every proof. */
+  gateId: string
+  /** The Sui network the gateway serves: signed into every proof. */
+  network: SuiNetwork
   /** The held access NFT. */
   nftId: string
   /** Single-use NFTs spend one use on-chain per upload; an unlimited pass only signs. */
@@ -259,44 +339,95 @@ export interface GatedAccessPorts<Tx> {
   /** Challenge source (default: the relay gateway's `GET /v1/challenge`). */
   fetchChallenge?: (relayHost: string) => Promise<{ nonce: string }>
   onStatus?: (p: UploadProgress) => void
+  /** Clock (tests). */
+  now?: () => number
+}
+
+/** Oldest stored consume this client will resume (the gateways refuse a consume older than 5 days). */
+export const CONSUME_RESUME_MAX_AGE_MS = 4 * 24 * 60 * 60 * 1000
+
+/** A stored consume: the digest, the pass it spent a use of, and when. */
+interface StoredConsume {
+  digest: string
+  nftId: string
+  savedAt: number
+}
+
+/** The stored consume if it is well-formed, for this pass and recent; otherwise `null` (browser storage is untrusted). */
+function readStoredConsume(storage: StorageLike, key: string, nftId: string, now: number): StoredConsume | null {
+  const raw = storage.getItem(key)
+  if (!raw || raw.length > 4096) return null
+  let v: unknown
+  try {
+    v = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null
+  const e = v as Record<string, unknown>
+  if (typeof e.digest !== 'string' || !isTransactionDigest(e.digest)) return null
+  if (typeof e.nftId !== 'string' || e.nftId !== nftId) return null
+  if (typeof e.savedAt !== 'number' || !Number.isFinite(e.savedAt)) return null
+  if (now - e.savedAt > CONSUME_RESUME_MAX_AGE_MS || e.savedAt > now + 60_000) return null
+  return { digest: e.digest, nftId: e.nftId, savedAt: e.savedAt }
 }
 
 /**
  * Relay access that never burns a use on an interrupted upload.
  *
- * - A stored (unspent) consume digest is reused: fresh challenge, free signature, no new consume.
+ * - A stored (unspent) consume is reused when it is well-formed, for this pass and recent: a fresh
+ *   challenge, a free signature, no new consume. Anything else in storage is dropped.
  * - Otherwise one use is consumed on-chain and its digest persisted **before** the upload, so an
  *   interruption resumes instead of consuming again.
- * - `uploaded()` clears the stored digest; `token(true)` consumes anew after a redeemed conflict.
+ * - `uploaded()` clears the stored digest; `token({ forceFresh: true })` consumes anew after a
+ *   redeemed conflict.
  */
 export function createGatedAccess<Tx>(ports: GatedAccessPorts<Tx>): GatedAccess {
   const challengeOf = ports.fetchChallenge ?? ((host: string) => fetchRelayChallenge(host))
+  const now = ports.now ?? Date.now
+  let resumedStored = false
+
+  async function ensureConsume(forceFresh: boolean): Promise<string | undefined> {
+    if (!ports.singleUse) return undefined
+    if (forceFresh) ports.storage.removeItem(ports.key)
+    const stored = readStoredConsume(ports.storage, ports.key, ports.nftId, now())
+    if (stored) {
+      resumedStored = true
+      return stored.digest
+    }
+    ports.storage.removeItem(ports.key) // malformed, foreign or expired: never reused
+    resumedStored = false
+    ports.onStatus?.({ step: 'access', detail: 'Using one access pass (approve in wallet)…' })
+    const challenge = await challengeOf(ports.relayHost)
+    const res = await ports.signAndExecute(ports.buildConsume(ports.nftId, challenge.nonce))
+    if (!res.digest || !isTransactionDigest(res.digest)) throw new Error('The consume transaction returned no valid digest.')
+    ports.storage.setItem(ports.key, JSON.stringify({ digest: res.digest, nftId: ports.nftId, savedAt: now() } satisfies StoredConsume))
+    // Best-effort: the gateway re-reads the consume with its own bounded retry, so an indexing
+    // delay must not abort the upload; a failed consume is rejected by the gateway.
+    await ports.waitForTransaction(res.digest).catch(() => {})
+    return res.digest
+  }
+
   return {
-    async token(forceFresh) {
-      if (forceFresh) ports.storage.removeItem(ports.key)
+    async prepare() {
+      await ensureConsume(false)
+    },
+    async token(opts) {
+      const consumeDigest = await ensureConsume(opts?.forceFresh ?? false)
       const challenge = await challengeOf(ports.relayHost)
-      let consumeDigest: string | undefined
-      if (ports.singleUse) {
-        consumeDigest = ports.storage.getItem(ports.key) ?? undefined
-        if (!consumeDigest) {
-          ports.onStatus?.({ step: 'access', detail: 'Using one access pass (approve in wallet)…' })
-          const res = await ports.signAndExecute(ports.buildConsume(ports.nftId, challenge.nonce))
-          if (!res.digest) throw new Error('The consume transaction returned no digest.')
-          consumeDigest = res.digest
-          ports.storage.setItem(ports.key, consumeDigest)
-          // Best-effort: the gateway re-reads the consume with its own bounded retry, so an
-          // indexing delay must not abort the upload; a failed consume is rejected by the gateway.
-          await ports.waitForTransaction(consumeDigest).catch(() => {})
-        }
-      }
       ports.onStatus?.({ step: 'access', detail: 'Signing relay access (approve in wallet)…' })
-      const { signature } = await ports.sign(personalMessageForNonce(challenge.nonce))
-      return encodeAccessProof({
+      return buildAccessProof({
         address: ports.address,
-        nonce: challenge.nonce,
-        signature,
+        challenge: { nonce: challenge.nonce, expiresAt: 0 },
+        sign: ports.sign,
+        gateway: ports.relayHost,
+        gateId: ports.gateId,
+        network: ports.network,
         ...(consumeDigest ? { consumeDigest } : {}),
       })
+    },
+    resumed() {
+      return resumedStored
     },
     uploaded() {
       ports.storage.removeItem(ports.key)
@@ -383,6 +514,9 @@ export interface RunBlobUploadDeps {
   onCertified?: (blobObjectId: string) => void
   /** Lazy loader for the package root (default: dynamic import; keeps wasm out of the eager bundle). */
   loadWalrusClient?: () => Promise<WalrusClientModule>
+  /** Clock and delay (tests). */
+  now?: () => number
+  sleep?: (ms: number) => Promise<void>
 }
 
 /**
@@ -390,18 +524,26 @@ export interface RunBlobUploadDeps {
  * approvals (register, certify), plus the access step for a gated relay.
  *
  * - An existing copy aborts before register ({@link getDuplicateExisting}).
- * - A redeemed consume (409) spends one new use and retries the upload once, on the same
- *   registration.
+ * - The single-use consume is spent and persisted BEFORE register; the signed relay token is minted
+ *   AFTER register, right before each upload attempt.
+ * - A failed upload is retried on the same registration (bounded; see `uploadWithRetries`): a
+ *   redeemed consume (409) spends one new use, a stale proof or transient failure gets a fresh
+ *   token. When attempts run out, the error carries {@link getUploadRetry}.
  * - A certify failure throws with {@link getCertifyRetry}; the upload is never repeated.
  */
 export async function runBlobUpload(deps: RunBlobUploadDeps): Promise<BlobUploadResult> {
+  assertEpochs(deps.epochs) // before any wallet prompt or gas
   const load = deps.loadWalrusClient ?? (async (): Promise<WalrusClientModule> => await import('./index.js'))
   const { createWalrusClient, createBlobUploadFlow, walrusBlobUrl } = await load()
+  const now = deps.now ?? Date.now
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
 
+  // The consume (if single-use) is spent and persisted up front; the signed token is minted per
+  // upload attempt, right before the relay is called (see `attempt` below).
   let token: string | undefined
   if (deps.access) {
     deps.onStatus({ step: 'access', detail: 'Confirming access…' })
-    token = await deps.access.token(false)
+    await deps.access.prepare()
   }
 
   const client = createWalrusClient({
@@ -433,29 +575,50 @@ export async function runBlobUpload(deps: RunBlobUploadDeps): Promise<BlobUpload
   await regTx.build({ client: deps.suiClient })
   const reg = await deps.executor.signAndExecute(regTx)
   await deps.executor.waitForTransaction(reg.digest)
+  const registeredAt = now()
 
-  deps.onStatus({ step: 'upload', detail: 'Uploading to the relay…' })
-  let uploaded: Awaited<ReturnType<BlobUploadFlow['upload']>>
-  try {
-    uploaded = await flow.upload({ digest: reg.digest, deletable })
-  } catch (e) {
-    if (!deps.access || !isRedeemedConflict(e)) throw e
-    // The stored consume was redeemed by an earlier upload: spend a new use and retry once on the
-    // same (still recent) registration.
-    token = await deps.access.token(true)
+  // One upload attempt on this registration. A gated relay gets a fresh challenge and signature
+  // every time (a challenge outlives neither a slow approval nor a retry).
+  const attempt = async (forceFresh: boolean): Promise<Awaited<ReturnType<BlobUploadFlow['upload']>>> => {
+    if (deps.access) token = await deps.access.token({ forceFresh })
     deps.onStatus({ step: 'upload', detail: 'Uploading to the relay…' })
-    uploaded = await flow.upload({ digest: reg.digest, deletable })
+    return flow.upload({ digest: reg.digest, deletable })
   }
-  deps.access?.uploaded()
-  deps.onUploaded?.({
-    blobId: uploaded.blobId,
-    blobObjectId: uploaded.blobObjectId,
-    certificate: uploaded.certificate,
-    deletable,
-  })
+
+  // Upload with bounded same-registration retries. The relay accepts the registration's tip
+  // transaction for its freshness window, so a transient failure must not cost a second paid
+  // registration. What is retried, and how:
+  //   - 409 `redeemed`  → spend a new use (the stored consume was redeemed by an earlier upload);
+  //   - a rejected resumed consume (403) → drop it and consume anew, once;
+  //   - 409 `leased`, 401/403 stale proof, 429, 5xx, network errors → a fresh token (no new consume).
+  // Anything else (a 4xx that is not about the proof) is final.
+  const uploadWithRetries = async (): Promise<Awaited<ReturnType<BlobUploadFlow['upload']>>> => {
+    let forceFresh = false
+    let reconsumed = false
+    for (let n = 1; ; n++) {
+      try {
+        return await attempt(forceFresh)
+      } catch (e) {
+        forceFresh = false
+        const fresh = now() - registeredAt <= REGISTRATION_FRESH_MS
+        if (n >= UPLOAD_ATTEMPTS || !fresh) throw e
+        if (deps.access && isRedeemedConflict(e)) {
+          forceFresh = true
+        } else if (deps.access && isConsumeRejected(e) && deps.access.resumed() && !reconsumed) {
+          reconsumed = true
+          forceFresh = true
+        } else if (isLeasedConflict(e) || isStaleProof(e) || isRetryableUploadFailure(e)) {
+          await sleep(UPLOAD_RETRY_DELAY_MS * n)
+        } else {
+          throw e
+        }
+      }
+    }
+  }
 
   // Certify is a plain owner transaction built from the certificate the live flow holds (no relay,
   // no tip); a retry rebuilds the same transaction.
+  let uploaded: Awaited<ReturnType<BlobUploadFlow['upload']>>
   const runCertify = async (): Promise<BlobUploadResult> => {
     deps.onStatus({ step: 'certify', detail: 'Certifying (approve in wallet)…' })
     const certTx = flow.certify()
@@ -468,10 +631,45 @@ export async function runBlobUpload(deps: RunBlobUploadDeps): Promise<BlobUpload
     return { blobId: blob.blobId, url: walrusBlobUrl(deps.network, blob.blobId), digest: cert.digest }
   }
 
+  const uploadAndCertify = async (): Promise<BlobUploadResult> => {
+    uploaded = await uploadWithRetries()
+    deps.access?.uploaded()
+    deps.onUploaded?.({
+      blobId: uploaded.blobId,
+      blobObjectId: uploaded.blobObjectId,
+      certificate: uploaded.certificate,
+      deletable,
+    })
+    try {
+      return await runCertify()
+    } catch (e) {
+      attachCertifyRetry<BlobUploadResult>(e, runCertify)
+      throw e
+    }
+  }
+
   try {
-    return await runCertify()
+    return await uploadAndCertify()
   } catch (e) {
-    attachCertifyRetry<BlobUploadResult>(e, runCertify)
+    // A failure before the upload landed leaves a paid registration; offer another try on it while
+    // the relay still accepts it. (A certify failure carries `certifyRetry` instead.)
+    if (!getCertifyRetry(e) && now() - registeredAt <= REGISTRATION_FRESH_MS) {
+      attachUploadRetry<BlobUploadResult>(e, uploadAndCertify)
+    }
     throw e
   }
+}
+
+/** Upload attempts per registration (the first plus retries). */
+export const UPLOAD_ATTEMPTS = 3
+/** Backoff unit between retries (multiplied by the attempt number). */
+export const UPLOAD_RETRY_DELAY_MS = 2000
+/** How long a registration's tip transaction stays acceptable to the relay (its default is 1 hour; this leaves margin). */
+export const REGISTRATION_FRESH_MS = 50 * 60 * 1000
+
+/** True for failures worth another attempt on the same registration: 429, 5xx, and errors with no HTTP status (network, timeout). */
+function isRetryableUploadFailure(err: unknown): boolean {
+  const status = httpStatusOf(err)
+  if (status === null) return true
+  return status === 429 || status >= 500
 }

@@ -13,7 +13,7 @@ describe('storeBlobViaPublisher', () => {
       sendObjectTo: OWNER,
       fetch: fetchSpy as unknown as typeof fetch,
     })
-    expect(id).toBe('B1')
+    expect(id).toEqual({ blobId: 'B1', kind: 'newlyCreated' })
     const [url, init] = fetchSpy.mock.calls[0] as unknown as [URL, RequestInit]
     expect(url.origin + url.pathname).toBe(`${PUBLISHER}/v1/blobs`)
     expect(url.searchParams.get('epochs')).toBe('5')
@@ -26,7 +26,37 @@ describe('storeBlobViaPublisher', () => {
   it('accepts an already-certified response', async () => {
     const fetchSpy = vi.fn(async () => Response.json({ alreadyCertified: { blobId: 'B2' } }))
     const opts = { publisher: PUBLISHER, epochs: 1, sendObjectTo: OWNER, fetch: fetchSpy as unknown as typeof fetch }
-    expect(await storeBlobViaPublisher(new Uint8Array([1]), opts)).toBe('B2')
+    expect(await storeBlobViaPublisher(new Uint8Array([1]), opts)).toEqual({ blobId: 'B2', kind: 'alreadyCertified' })
+  })
+
+  it('reports the details a caller needs: object id and end epoch, and that an already-certified blob created no object', async () => {
+    const created = vi.fn(async () =>
+      Response.json({ newlyCreated: { blobObject: { blobId: 'B1', id: '0xabc' }, resource: { endEpoch: 80 } } }),
+    )
+    const certified = vi.fn(async () => Response.json({ alreadyCertified: { blobId: 'B2', endEpoch: 61 } }))
+    const base = { publisher: PUBLISHER, epochs: 53, sendObjectTo: OWNER }
+    expect(await storeBlobViaPublisher(new Uint8Array([1]), { ...base, fetch: created as unknown as typeof fetch })).toEqual({
+      blobId: 'B1',
+      kind: 'newlyCreated',
+      blobObjectId: '0xabc',
+      endEpoch: 80,
+    })
+    expect(await storeBlobViaPublisher(new Uint8Array([1]), { ...base, fetch: certified as unknown as typeof fetch })).toEqual({
+      blobId: 'B2',
+      kind: 'alreadyCertified',
+      endEpoch: 61,
+    })
+  })
+
+  it('refuses redirects and bounds the response', async () => {
+    const spy = vi.fn(async () => Response.json({ newlyCreated: { blobObject: { blobId: 'B1' } } }))
+    const base = { publisher: PUBLISHER, epochs: 1, sendObjectTo: OWNER }
+    await storeBlobViaPublisher(new Uint8Array([1]), { ...base, fetch: spy as unknown as typeof fetch })
+    expect((spy.mock.calls[0] as unknown as [URL, RequestInit])[1].redirect).toBe('error')
+    const huge = vi.fn(async () => new Response('x'.repeat(100_000), { status: 500 }))
+    await expect(storeBlobViaPublisher(new Uint8Array([1]), { ...base, fetch: huge as unknown as typeof fetch })).rejects.toThrow(/larger than/)
+    const notJson = vi.fn(async () => new Response('<html>', { status: 200 }))
+    await expect(storeBlobViaPublisher(new Uint8Array([1]), { ...base, fetch: notJson as unknown as typeof fetch })).rejects.toThrow(/not JSON/)
   })
 
   it('refuses a payload over maxBytes before any request', async () => {

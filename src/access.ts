@@ -16,8 +16,10 @@ import {
   type Challenge,
   type AccessProof,
   type PersonalMessageSigner,
-  personalMessageForNonce,
+  type SuiNetwork,
+  personalMessage,
   encodeAccessProof,
+  buildAccessProof,
   fetchChallenge,
 } from '@meddleware/nft-gate-client'
 
@@ -30,10 +32,14 @@ export type RelayChallenge = Challenge
 export type AccessProofInput = AccessProof
 
 /** A wallet personal-message signer (e.g. wallet-standard `sui:signPersonalMessage`). */
-export type { PersonalMessageSigner }
+export type { PersonalMessageSigner, SuiNetwork }
 
-/** The exact bytes the wallet signs for a nonce. MUST match the gateway's derivation. */
-export { personalMessageForNonce }
+/**
+ * The exact bytes the wallet signs: the audience-bound `nft-gate:access:v2` message (gateway origin,
+ * gate, network, nonce and, for single-use gateways, the consume digest). MUST match the gateway's
+ * derivation.
+ */
+export { personalMessage }
 
 /**
  * Encode a proof as the base64(JSON) Bearer token the relay auth header carries.
@@ -45,13 +51,12 @@ export function buildAccessProofToken(proof: AccessProofInput): string {
 }
 
 /**
- * Fetch a fresh challenge from the gateway's `GET /v1/challenge` endpoint.
- * Tolerates both `expiresAt` (camelCase) and `expires_at` (snake_case) response shapes. The relay
- * host must be `https:` (loopback `http:` allowed); the request aborts after `opts.timeoutMs`
- * (default 10 s) or on `opts.signal`.
+ * Fetch a fresh challenge from the gateway's `GET /v1/challenge` endpoint. The relay host must be
+ * `https:` (loopback `http:` allowed); redirects are refused, the body is size-capped, and the
+ * request aborts after `opts.timeoutMs` (default 10 s) or on `opts.signal`.
  *
  * @throws {Error} if the network request fails or the gateway returns a non-2xx status.
- * @throws {Error} if the response body is missing the required `nonce` field.
+ * @throws {Error} if the response lacks a valid `nonce` or a positive numeric `expiresAt`.
  */
 export function fetchRelayChallenge(
   relayHost: string,
@@ -62,26 +67,31 @@ export function fetchRelayChallenge(
 
 /**
  * One-shot: fetch a challenge, sign it with the wallet, and return the encoded proof token
- * to pass as `createWalrusClient({ uploadRelayAuthToken })`. For single-use gates, supply
- * the `consumeDigest` of the on-chain consume transaction.
+ * to pass as `createWalrusClient({ uploadRelayAuthToken })`. The signature binds the relay's origin,
+ * the gate and the network, so the token works nowhere else. For single-use gates, supply the
+ * `consumeDigest` of the on-chain consume transaction.
  *
- * @throws {Error} if the challenge fetch fails.
+ * @throws {Error} if the challenge fetch fails or an input is not in its canonical form.
  * @throws {Error} if the wallet signer rejects the message.
  */
 export async function createRelayAccessToken(opts: {
   relayHost: string
   address: string
+  /** The `Gate` the relay guards (`0x` + 64 lower-case hex). */
+  gateId: string
+  network: SuiNetwork
   sign: PersonalMessageSigner
   consumeDigest?: string
   signal?: AbortSignal
 }): Promise<string> {
   const challenge = await fetchChallenge(opts.relayHost, { signal: opts.signal })
-  const message = personalMessageForNonce(challenge.nonce)
-  const { signature } = await opts.sign(message)
-  return encodeAccessProof({
+  return buildAccessProof({
     address: opts.address,
-    nonce: challenge.nonce,
-    signature,
+    challenge,
+    sign: opts.sign,
+    gateway: opts.relayHost,
+    gateId: opts.gateId,
+    network: opts.network,
     ...(opts.consumeDigest ? { consumeDigest: opts.consumeDigest } : {}),
   })
 }

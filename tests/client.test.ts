@@ -157,6 +157,15 @@ describe('createWalrusClient upload-relay wiring', () => {
   })
 })
 
+describe('relay tip cap validation', () => {
+  it('rejects NaN, zero, negatives, fractions and unsafe integers', () => {
+    for (const cap of [Number.NaN, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 2, Infinity]) {
+      expect(() => createWalrusClient({ network: 'testnet', uploadRelayMaxTipMist: cap })).toThrow(/uploadRelayMaxTipMist/)
+    }
+    expect(() => createWalrusClient({ network: 'testnet', uploadRelayMaxTipMist: 1 })).not.toThrow()
+  })
+})
+
 describe('createWalrusClient localnet targeting', () => {
   const pkgConfig = { systemObjectId: '0xsys', stakingPoolId: '0xstake', exchangeIds: [] }
 

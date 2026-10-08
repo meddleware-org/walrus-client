@@ -1,17 +1,27 @@
 import { WalrusFile } from '@mysten/walrus'
 import type { Signer } from '@mysten/sui/cryptography'
 import type { createWalrusClient } from './client.js'
+import { MAX_SINGLE_RESERVATION_EPOCHS, assertEpochs } from './limits.js'
 
 /** The return type of {@link createWalrusClient}. */
 export type WalrusClient = ReturnType<typeof createWalrusClient>
 
+export { MAX_SINGLE_RESERVATION_EPOCHS }
+
 /**
- * Maximum epochs a SINGLE Walrus reservation accepts (`max_epochs_ahead` on the
- * Walrus system object; 53 on testnet/mainnet). Passing more to `writeBlob` /
- * `writeFiles` aborts on-chain (`reserve_space`, MoveAbort code 2). ~2 years at
- * the ~2-week epoch cadence.
+ * The network's current `max_epochs_ahead`, read from the Walrus system object, or
+ * {@link MAX_SINGLE_RESERVATION_EPOCHS} when it cannot be read. Used to validate `epochs` before a
+ * wallet prompt is shown.
  */
-export const MAX_SINGLE_RESERVATION_EPOCHS = 53
+export async function maxEpochsAhead(client: WalrusClient): Promise<number> {
+  try {
+    const state = (await client.walrus.systemState()) as { max_epochs_ahead?: unknown }
+    const n = Number(state?.max_epochs_ahead)
+    return Number.isSafeInteger(n) && n >= 1 ? n : MAX_SINGLE_RESERVATION_EPOCHS
+  } catch {
+    return MAX_SINGLE_RESERVATION_EPOCHS
+  }
+}
 
 /**
  * Recommended TARGET lifetime for critical assets (~7.7 years at a ~2-week epoch
@@ -41,6 +51,12 @@ export type UploadResult = {
   blobObjectId: string
 }
 
+/** `epochs` validated against the network's live maximum; the maximum itself when omitted. */
+async function resolveEpochs(client: WalrusClient, epochs: number | undefined): Promise<number> {
+  const max = await maxEpochsAhead(client)
+  return epochs === undefined ? max : assertEpochs(epochs, max)
+}
+
 /**
  * Upload raw bytes as a Walrus quilt (file bundle). Use this from Node.js with a keypair
  * signer; use {@link createUploadFlow} in the browser for wallet-popup-safe signing.
@@ -59,7 +75,7 @@ export async function uploadBytes(
     files: [file],
     // Default to the largest reservation Walrus accepts; a caller wanting the
     // LONG_TERM target must renew via extendBlobLifetime after this.
-    epochs: options.epochs ?? MAX_SINGLE_RESERVATION_EPOCHS,
+    epochs: await resolveEpochs(client, options.epochs),
     deletable: options.deletable ?? false,
     signer,
   })
@@ -120,7 +136,7 @@ export async function uploadImageBytes(
   const res = await client.walrus.writeBlob({
     blob: contents,
     // Default to the largest reservation Walrus accepts (see uploadBytes).
-    epochs: options.epochs ?? MAX_SINGLE_RESERVATION_EPOCHS,
+    epochs: await resolveEpochs(client, options.epochs),
     deletable: options.deletable ?? false,
     signer,
   })

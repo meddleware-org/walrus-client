@@ -173,6 +173,8 @@ import { createRelayAccessToken, createWalrusClient } from '@meddleware/walrus-c
 const token = await createRelayAccessToken({
   relayHost: 'https://sui-walrus-relay-testnet.meddleware.co.uk',
   address: walletAddress,
+  gateId, // the Gate the relay guards (0x + 64 lower-case hex)
+  network: 'testnet',
   sign: (msg) => wallet.signPersonalMessage({ message: msg }),
 })
 
@@ -197,8 +199,10 @@ const access = createGatedAccess({
   key: consumeStorageKey('testnet', gate.gateId, address),
   relayHost,
   address,
+  gateId: gate.gateId,
+  network: 'testnet',
   nftId,
-  singleUse: usesRemaining !== null,
+  singleUse: pass.variant.kind === 'singleUse',
   buildConsume: (id, nonce) => buildConsumeTx(gate, id, nonce),
   signAndExecute: (tx) => executor.signAndExecute(tx),
   waitForTransaction: (d) => executor.waitForTransaction(d),
@@ -211,12 +215,22 @@ const { blobId, url } = await runBlobUpload({
 })
 ```
 
-- **Register is never resumed.** The relay's tip and nonce live in the register transaction, and
-  the relay rejects an old one.
+- **Register is never resumed across page loads.** The relay's tip and nonce live in the register
+  transaction, and the relay rejects an old one. Within the relay's freshness window, though, a failed
+  *upload* is retried on the **same registration** (up to 3 attempts, a fresh access token each time),
+  so a relay 5xx, a network drop or an expired challenge never costs a second paid registration. When
+  attempts run out the error carries `getUploadRetry(err)`: call it to try again without re-registering.
+- **The signed access token is minted after register**, right before each upload attempt (a challenge
+  lives minutes; a wallet approval can take longer). The single-use consume is spent *before* register
+  and persisted, so it survives an interruption.
 - **A single-use consume is never wasted.**
-  - Its digest is persisted before the upload and reused after an interruption.
+  - Its digest is persisted (`{ digest, nftId, savedAt }`) before the upload and reused after an
+    interruption, but only if it is well-formed, for this pass and under 4 days old; anything else is dropped.
   - It is cleared once the upload lands.
-  - A `409 redeemed` spends one new use and retries the upload on the same registration.
+  - A `409 redeemed` spends one new use and retries the upload on the same registration; a resumed
+    consume the gateway rejects (403) is dropped and consumed anew once.
+- **Inputs are validated before any wallet prompt:** `epochs` is an integer from 1 to the network's
+  `max_epochs_ahead` (53 fallback), and `uploadRelayMaxTipMist` a positive safe integer.
 - **Errors can carry an action.**
   - `getDuplicateExisting(err)` returns an existing owned copy found before registering (offer
     Extend or Certify).
@@ -233,11 +247,15 @@ to the user. No wallet, wasm or `@mysten/walrus` is needed.
 ```typescript
 import { storeBlobViaPublisher, readBlob } from '@meddleware/walrus-client/http'
 
-const blobId = await storeBlobViaPublisher(bytes, { publisher, epochs: 5, sendObjectTo: address, maxBytes })
+const { blobId, kind, endEpoch } = await storeBlobViaPublisher(bytes, { publisher, epochs: 5, sendObjectTo: address, maxBytes })
+// kind === 'alreadyCertified': the publisher created NO Blob object for you; it lives until endEpoch.
 const back = await readBlob(blobId, { aggregator })
 ```
 
 - Blobs are stored **permanent**.
+- Redirects are refused and responses are size-capped.
+- **The aggregator is trusted for the bytes it returns** (no blob id is re-derived locally); sealed
+  content is protected by its own authenticated encryption, plaintext needs checking by other means.
 - Reads ask the aggregator for a strict consistency check.
 - Endpoints must be https (http is allowed only for localhost).
 

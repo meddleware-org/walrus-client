@@ -31,19 +31,73 @@ export interface StoreViaPublisherOptions {
   fetch?: typeof fetch
 }
 
-interface PublishResponse {
-  newlyCreated?: { blobObject?: { blobId?: string } }
-  alreadyCertified?: { blobId?: string }
+/** Largest publisher response (success or error) that is read; a hostile endpoint cannot exhaust memory. */
+export const MAX_PUBLISHER_RESPONSE_BYTES = 64 * 1024
+
+/** What the publisher did with the payload. */
+export interface PublishResult {
+  blobId: string
+  /**
+   * `newlyCreated`: the publisher stored it and sent a `Blob` object to `sendObjectTo`, whose
+   * lifetime that address controls. `alreadyCertified`: the content was already stored on Walrus;
+   * the publisher created NO object for `sendObjectTo`, so the caller owns nothing it can extend, and
+   * the blob lives only until `endEpoch` (which may be sooner than the requested epochs).
+   */
+  kind: 'newlyCreated' | 'alreadyCertified'
+  /** Last storage epoch of the blob, when the publisher reports it. */
+  endEpoch?: number
+  /** The created `Blob` object, for `newlyCreated`. */
+  blobObjectId?: string
+}
+
+/** Read at most `max` bytes of a response body as text; throws past the cap. */
+async function readTextCapped(res: Response, max: number): Promise<string> {
+  const declared = Number(res.headers.get('content-length') ?? NaN)
+  if (Number.isFinite(declared) && declared > max) {
+    await res.body?.cancel()
+    throw new Error(`The response is larger than ${max} bytes.`)
+  }
+  if (!res.body) return ''
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > max) {
+      await reader.cancel()
+      throw new Error(`The response is larger than ${max} bytes.`)
+    }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(total)
+  let at = 0
+  for (const c of chunks) {
+    bytes.set(c, at)
+    at += c.byteLength
+  }
+  return new TextDecoder().decode(bytes)
+}
+
+const BLOB_ID = /^[A-Za-z0-9_-]{1,128}$/
+
+function recordOf(v: unknown): Record<string, unknown> | null {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
 }
 
 /**
- * Store `bytes` as a **permanent** blob through a publisher and return its blob id. Permanent
- * because pointers and manifests rely on the blob staying readable until it expires.
+ * Store `bytes` as a **permanent** blob through a publisher and describe the result. Permanent
+ * because pointers and manifests rely on the blob staying readable until it expires. Redirects are
+ * refused and the response is size-capped.
  *
- * @throws {Error} for a non-https publisher, an oversized payload, a publisher error or timeout, or
- *   a response without a blob id.
+ * Check `kind`: for `alreadyCertified` the publisher sends nothing to `sendObjectTo` (see
+ * {@link PublishResult}).
+ *
+ * @throws {Error} for a non-https publisher, an oversized payload, a redirect, a publisher error or
+ *   timeout, or a response without a valid blob id.
  */
-export async function storeBlobViaPublisher(bytes: Uint8Array, opts: StoreViaPublisherOptions): Promise<string> {
+export async function storeBlobViaPublisher(bytes: Uint8Array, opts: StoreViaPublisherOptions): Promise<PublishResult> {
   if (opts.maxBytes !== undefined && bytes.length > opts.maxBytes) {
     throw new Error(`The payload is ${bytes.length} bytes; the publisher accepts at most ${opts.maxBytes}.`)
   }
@@ -54,15 +108,32 @@ export async function storeBlobViaPublisher(bytes: Uint8Array, opts: StoreViaPub
   const res = await (opts.fetch ?? fetch)(url, {
     method: 'PUT',
     body: bytes as BodyInit,
+    redirect: 'error',
     signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
   })
-  if (!res.ok) throw new Error(`Walrus publisher error ${res.status}: ${(await res.text()).slice(0, 300)}`)
-  const json = (await res.json()) as PublishResponse
-  const blobId = json?.newlyCreated?.blobObject?.blobId ?? json?.alreadyCertified?.blobId
-  if (typeof blobId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(blobId)) {
+  const text = await readTextCapped(res, MAX_PUBLISHER_RESPONSE_BYTES)
+  if (!res.ok) throw new Error(`Walrus publisher error ${res.status}: ${text.slice(0, 300)}`)
+  let json: unknown
+  try {
+    json = JSON.parse(text)
+  } catch {
+    throw new Error('Walrus publisher returned a response that is not JSON.')
+  }
+  const root = recordOf(json)
+  const created = recordOf(root?.newlyCreated)
+  const createdBlob = recordOf(created?.blobObject)
+  const certified = recordOf(root?.alreadyCertified)
+  const blobId = createdBlob?.blobId ?? certified?.blobId
+  if (typeof blobId !== 'string' || !BLOB_ID.test(blobId)) {
     throw new Error('Walrus publisher returned no valid blob id.')
   }
-  return blobId
+  const endEpoch = created ? recordOf(created.resource)?.endEpoch : certified?.endEpoch
+  return {
+    blobId,
+    kind: createdBlob ? 'newlyCreated' : 'alreadyCertified',
+    ...(typeof endEpoch === 'number' && Number.isSafeInteger(endEpoch) ? { endEpoch } : {}),
+    ...(typeof createdBlob?.id === 'string' ? { blobObjectId: createdBlob.id } : {}),
+  }
 }
 
 /** Default cap on a blob read through {@link readBlob}: the operator relay's edge cap (100 MiB). */
@@ -80,14 +151,19 @@ export interface ReadBlobOptions {
 
 /**
  * Read a blob's bytes from an aggregator, with `strict_consistency_check` so the aggregator verifies
- * the blob was encoded consistently before serving it.
+ * the blob was encoded consistently before serving it. Redirects are refused.
  *
- * @throws {Error} for a non-https aggregator, an aggregator error, a timeout or a blob over `maxBytes`.
+ * **Trust.** The aggregator is trusted for the bytes it returns: no blob id is re-derived locally, so
+ * a hostile or compromised aggregator can serve arbitrary bytes for a blob id. Sealed (encrypted)
+ * content is protected downstream by its authenticated encryption; for plaintext that matters, verify
+ * the content by other means (a hash recorded elsewhere, or a read through the full Walrus SDK).
+ *
+ * @throws {Error} for a non-https aggregator, an aggregator error, a redirect, a timeout or a blob over `maxBytes`.
  */
 export async function readBlob(blobId: string, opts: ReadBlobOptions): Promise<Uint8Array> {
   const url = new URL(`/v1/blobs/${encodeURIComponent(blobId)}`, requireHttpsEndpoint(opts.aggregator, 'Walrus aggregator'))
   url.searchParams.set('strict_consistency_check', 'true')
-  const res = await (opts.fetch ?? fetch)(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 60_000) })
+  const res = await (opts.fetch ?? fetch)(url, { redirect: 'error', signal: AbortSignal.timeout(opts.timeoutMs ?? 60_000) })
   if (!res.ok) throw new Error(`Walrus aggregator error ${res.status}`)
   const max = opts.maxBytes ?? DEFAULT_READ_MAX_BYTES
   const declared = Number(res.headers.get('content-length') ?? NaN)

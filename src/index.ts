@@ -17,9 +17,11 @@ export {
 } from './client.js'
 export type { CreateWalrusClientOptions, WalrusClientNetwork, WalrusNetwork } from './client.js'
 
+export { MAX_SINGLE_RESERVATION_EPOCHS, assertEpochs, assertTipCapMist } from './limits.js'
+
 export {
-  MAX_SINGLE_RESERVATION_EPOCHS,
   LONG_TERM_EPOCHS,
+  maxEpochsAhead,
   uploadBytes,
   createUploadFlow,
   uploadImageBytes,
@@ -42,11 +44,11 @@ export { fetchOwnedWalrusBlobs } from './query.js'
 export type { OwnedBlob } from './query.js'
 
 export {
-  personalMessageForNonce,
+  personalMessage,
   buildAccessProofToken,
   fetchRelayChallenge,
   createRelayAccessToken,
 } from './access.js'
-export type { RelayChallenge, AccessProofInput, PersonalMessageSigner } from './access.js'
+export type { RelayChallenge, AccessProofInput, PersonalMessageSigner, SuiNetwork } from './access.js'
 
 export { WalrusFile, RetryableWalrusClientError } from '@mysten/walrus'

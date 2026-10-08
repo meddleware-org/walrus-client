@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.26] - 2026-10-08
+
+### Changed (breaking, pre-v0.2)
+
+- **Access proofs are audience-bound** (`@meddleware/nft-gate-client` 0.0.16): `createRelayAccessToken`
+  and `createGatedAccess` take the `gateId` and `network` and sign `nft-gate:access:v2` over the
+  relay's origin, gate, network, nonce and consume digest. `personalMessageForNonce` is now
+  `personalMessage`.
+- **A failed upload no longer costs a second registration.** The signed token is minted after
+  register, right before each upload attempt, and a failed upload is retried on the same registration
+  (up to 3 attempts, a fresh token each time) for a relay 5xx, a network error, a stale challenge or a
+  `leased` conflict; `redeemed` still spends a new use. When attempts run out the error carries
+  `getUploadRetry(err)`. `GatedAccess` gains `prepare()` and `resumed()`; `token(forceFresh)` is now
+  `token({ forceFresh })`.
+- **The stored consume is validated.** It is persisted as `{ digest, nftId, savedAt }`; a value that is
+  malformed, for another pass, over 4 days old or from the future is dropped, and a resumed consume
+  the gateway rejects (403) is consumed anew once. A consume result without a valid base58 digest is
+  refused instead of stored.
+- `epochs` must be an integer from 1 to the network's `max_epochs_ahead` (read live, 53 fallback) and
+  `uploadRelayMaxTipMist` a positive safe integer, both checked before any wallet prompt.
+- `./http`: `storeBlobViaPublisher` returns `{ blobId, kind, endEpoch?, blobObjectId? }` (an
+  `alreadyCertified` answer creates no Blob object for you); redirects are refused and responses are
+  size-capped; the aggregator trust is documented.
+- `@mysten/sui` and `@mysten/walrus` are **peer dependencies** (`^2.33.2`, `~1.2.32`), also dev
+  dependencies; `legacy-peer-deps` is gone and `npm ls --all` runs in CI.
+- `SECURITY.md` states the real tip-cap behaviour and the Walrus data properties.
+
+### Added
+
+- Tests: the real SDK calls the relay `fetch` hook (hermetic), `manage.ts` first-write and
+  missing-attribute paths, `uploadImageBytes` / `createBlobUploadFlow`.
+
 ## [0.0.25] - 2026-10-03
 
 ### Changed

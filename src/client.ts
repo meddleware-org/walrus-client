@@ -1,5 +1,6 @@
 import { SuiGrpcClient } from '@mysten/sui/grpc'
 import { walrus, TESTNET_WALRUS_PACKAGE_CONFIG, MAINNET_WALRUS_PACKAGE_CONFIG } from '@mysten/walrus'
+import { assertTipCapMist } from './limits.js'
 import type { WalrusPackageConfig } from '@mysten/walrus'
 
 export { TESTNET_WALRUS_PACKAGE_CONFIG, MAINNET_WALRUS_PACKAGE_CONFIG }
@@ -125,6 +126,7 @@ export function createWalrusClient({
   uploadRelayMaxTipMist = DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST,
   disableUploadRelay = false,
 }: CreateWalrusClientOptions = {}) {
+  assertTipCapMist(uploadRelayMaxTipMist)
   // localnet has no bundled RPC/relay default — the caller must supply rpcUrl (and, for uploads,
   // uploadRelayHost). Fall back to the public defaults only for the two bundled networks.
   const bundled = network === 'localnet' ? undefined : network

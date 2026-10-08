@@ -117,3 +117,34 @@ describe('setBlobAttributes / readBlobAttributes', () => {
     expect(attrs).toEqual({ color: 'blue' })
   })
 })
+
+describe('missing-attributes handling', () => {
+  const missing = Object.assign(new Error('Dynamic field not found'), { code: 'dynamicFieldNotFound' })
+
+  it('readBlobAttributes returns null for a blob without a metadata field and rethrows other errors', async () => {
+    const { client } = fakeClient()
+    client.walrus.readBlobAttributes.mockImplementationOnce(() => {
+      throw missing
+    })
+    expect(await readBlobAttributes(client, 'OBJ')).toBeNull()
+    client.walrus.readBlobAttributes.mockImplementationOnce(() => {
+      throw new Error('rpc down')
+    })
+    await expect(readBlobAttributes(client, 'OBJ')).rejects.toThrow('rpc down')
+  })
+
+  it('setBlobAttributes retries the first write with the blob object when the field does not exist yet', async () => {
+    const { client } = fakeClient()
+    client.walrus.executeWriteBlobAttributesTransaction.mockImplementationOnce(() => {
+      throw Object.assign(new Error('x'), { code: 'notExists' })
+    })
+    const res = await setBlobAttributes(client, 'OBJ', signer, { a: 'b' })
+    expect(res.digest).toMatch(/DIGEST/)
+    expect(client.walrus.executeWriteBlobAttributesTransaction).toHaveBeenCalledTimes(2)
+    expect(client.walrus.executeWriteBlobAttributesTransaction.mock.calls[1]![0]).toHaveProperty('blobObject')
+    client.walrus.executeWriteBlobAttributesTransaction.mockImplementationOnce(() => {
+      throw new Error('boom')
+    })
+    await expect(setBlobAttributes(client, 'OBJ', signer, { a: 'b' })).rejects.toThrow('boom')
+  })
+})

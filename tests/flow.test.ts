@@ -3,12 +3,20 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { decodeAccessProof } from '@meddleware/nft-gate-client'
 import {
+  CONSUME_RESUME_MAX_AGE_MS,
+  REGISTRATION_FRESH_MS,
+  UPLOAD_ATTEMPTS,
   clearPendingCertify,
   consumeStorageKey,
   createGatedAccess,
   getCertifyRetry,
   getDuplicateExisting,
+  getUploadRetry,
+  httpStatusOf,
+  isConsumeRejected,
+  isLeasedConflict,
   isRedeemedConflict,
+  isStaleProof,
   loadPendingCertifies,
   browserStorage,
   pendingCertifyKey,
@@ -68,7 +76,13 @@ function makeExecutor() {
   }
 }
 
+const GATE = '0x' + 'a1'.repeat(32)
+const DIGEST = '5Wq9tE4gXz8hEvFhYt8KkTJb2Pp6qXqj8cRk3xN1mYdL'
+const DIGEST2 = '3ucNSQzgjYgSNxS9cM3ZHSc3zLyLEWd9mT4pYiiyqKQ4'
+const noSleep = async () => {}
+
 const baseDeps = {
+  sleep: noSleep,
   bytes: new Uint8Array([1, 2, 3]),
   network: 'testnet' as const,
   relayHost: 'https://relay.example',
@@ -206,44 +220,134 @@ describe('runBlobUpload with gated access', () => {
   function access(tokens: string[]) {
     let i = 0
     return {
-      token: vi.fn(async (_forceFresh: boolean) => tokens[i++] ?? 'none'),
+      prepare: vi.fn(async () => {}),
+      token: vi.fn(async (_opts?: { forceFresh?: boolean }) => tokens[i++] ?? `tok-${i}`),
+      resumed: vi.fn(() => false),
       uploaded: vi.fn(() => {}),
     } satisfies GatedAccess
   }
+  const providerOf = (mod: ReturnType<typeof makeModule>['mod']) =>
+    (mod.createWalrusClient.mock.calls[0]![0] as { uploadRelayAuthToken: () => string }).uploadRelayAuthToken
 
-  it('resolves a token first and threads it into the relay per request', async () => {
-    const { mod } = makeModule()
+  it('spends the consume before register, mints the token AFTER register, and threads it into the relay', async () => {
+    const { mod, steps } = makeModule()
     const gate = access(['tok-1'])
+    gate.prepare.mockImplementation(async () => void steps.push('prepare'))
+    gate.token.mockImplementation(async () => {
+      steps.push('token')
+      return 'tok-1'
+    })
     const progress: UploadProgress[] = []
     await runBlobUpload({ ...baseDeps, access: gate, executor: makeExecutor(), onStatus: (p) => progress.push(p), loadWalrusClient: async () => mod })
-    expect(gate.token).toHaveBeenCalledWith(false)
-    const provider = (mod.createWalrusClient.mock.calls[0]![0] as { uploadRelayAuthToken: () => string }).uploadRelayAuthToken
-    expect(provider()).toBe('tok-1')
+    expect(steps).toEqual(['prepare', 'encode', 'register', 'token', 'upload', 'certify'])
+    expect(providerOf(mod)()).toBe('tok-1')
     expect(progress[0]!.step).toBe('access')
     expect(gate.uploaded).toHaveBeenCalledTimes(1)
   })
 
-  it('after a redeemed conflict, spends a new use and retries the upload on the same registration', async () => {
+  it('after a redeemed conflict, spends a new use and retries on the same registration', async () => {
     const { mod, flow } = makeModule()
     flow.upload.mockRejectedValueOnce(Object.assign(new Error('relay 409'), { status: 409, error: { code: 'redeemed' } }))
     const gate = access(['tok-1', 'tok-2'])
-    const executor = makeExecutor()
-    await runBlobUpload({ ...baseDeps, access: gate, executor, loadWalrusClient: async () => mod })
-    expect(gate.token.mock.calls).toEqual([[false], [true]])
+    await runBlobUpload({ ...baseDeps, access: gate, executor: makeExecutor(), loadWalrusClient: async () => mod })
+    expect(gate.token.mock.calls).toEqual([[{ forceFresh: false }], [{ forceFresh: true }]])
     expect(flow.register).toHaveBeenCalledTimes(1)
     expect(flow.upload).toHaveBeenCalledTimes(2)
     expect(flow.upload.mock.calls[1]![0].digest).toBe(flow.upload.mock.calls[0]![0].digest)
-    const provider = (mod.createWalrusClient.mock.calls[0]![0] as { uploadRelayAuthToken: () => string }).uploadRelayAuthToken
-    expect(provider()).toBe('tok-2')
+    expect(providerOf(mod)()).toBe('tok-2')
   })
 
-  it('does not re-consume on other upload failures', async () => {
+  it('a relay 5xx or a network error retries on the same registration with a fresh token, no new consume', async () => {
+    for (const failure of [Object.assign(new Error('relay 503'), { status: 503 }), new Error('network down')]) {
+      const { mod, flow } = makeModule()
+      flow.upload.mockRejectedValueOnce(failure)
+      const gate = access(['tok-1', 'tok-2'])
+      const executor = makeExecutor()
+      await runBlobUpload({ ...baseDeps, access: gate, executor, loadWalrusClient: async () => mod })
+      expect(gate.token.mock.calls).toEqual([[{ forceFresh: false }], [{ forceFresh: false }]])
+      expect(flow.register).toHaveBeenCalledTimes(1)
+      expect(executor.signAndExecute).toHaveBeenCalledTimes(2) // one register + one certify: not paid twice
+    }
+  })
+
+  it('an expired-challenge rejection retries on the same registration with a fresh token', async () => {
     const { mod, flow } = makeModule()
-    flow.upload.mockRejectedValueOnce(new Error('network down'))
-    const gate = access(['tok-1'])
-    await expect(runBlobUpload({ ...baseDeps, access: gate, executor: makeExecutor(), loadWalrusClient: async () => mod })).rejects.toThrow('network down')
-    expect(gate.token).toHaveBeenCalledTimes(1)
-    expect(gate.uploaded).not.toHaveBeenCalled()
+    flow.upload.mockRejectedValueOnce(Object.assign(new Error('relay 403: challenge nonce invalid, expired, or already used'), { status: 403 }))
+    const gate = access(['tok-1', 'tok-2'])
+    await runBlobUpload({ ...baseDeps, access: gate, executor: makeExecutor(), loadWalrusClient: async () => mod })
+    expect(flow.register).toHaveBeenCalledTimes(1)
+    expect(gate.token).toHaveBeenCalledTimes(2)
+  })
+
+  it('a rejected RESUMED consume is dropped and consumed anew, once', async () => {
+    const { mod, flow } = makeModule()
+    const rejected = Object.assign(new Error('relay 403: no matching single-use consume for this address'), { status: 403 })
+    flow.upload.mockRejectedValueOnce(rejected).mockRejectedValueOnce(rejected)
+    const gate = access(['tok-1', 'tok-2', 'tok-3'])
+    gate.resumed.mockReturnValue(true)
+    await expect(runBlobUpload({ ...baseDeps, access: gate, executor: makeExecutor(), loadWalrusClient: async () => mod })).rejects.toThrow(/single-use consume/)
+    // First retry re-consumes; a second rejection is final (bounded).
+    expect(gate.token.mock.calls[1]).toEqual([{ forceFresh: true }])
+    expect(gate.token).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry a rejection that is not about the proof (e.g. 400, 403 not an owner)', async () => {
+    for (const failure of [Object.assign(new Error('relay 400 bad request'), { status: 400 }), Object.assign(new Error('relay 403 address does not hold the required access NFT'), { status: 403 })]) {
+      const { mod, flow } = makeModule()
+      flow.upload.mockRejectedValue(failure)
+      const gate = access(['tok-1'])
+      await expect(runBlobUpload({ ...baseDeps, access: gate, executor: makeExecutor(), loadWalrusClient: async () => mod })).rejects.toThrow()
+      expect(flow.upload).toHaveBeenCalledTimes(1)
+      expect(gate.uploaded).not.toHaveBeenCalled()
+    }
+  })
+
+  it('bounds the retries and hands the caller an uploadRetry on the same registration', async () => {
+    const { mod, flow } = makeModule()
+    flow.upload.mockRejectedValue(Object.assign(new Error('relay 502'), { status: 502 }))
+    const gate = access([])
+    const executor = makeExecutor()
+    const err = await rejection(runBlobUpload({ ...baseDeps, access: gate, executor, loadWalrusClient: async () => mod }))
+    expect(flow.upload).toHaveBeenCalledTimes(UPLOAD_ATTEMPTS)
+    expect(flow.register).toHaveBeenCalledTimes(1)
+    const retry = getUploadRetry<{ digest?: string }>(err)
+    expect(retry).toBeTypeOf('function')
+    // The relay recovers: the retry uploads on the SAME registration, then certifies.
+    flow.upload.mockResolvedValue({ blobId: 'BLOB123', blobObjectId: 'OBJ123', certificate: 'CERT_B64' })
+    const res = await retry!()
+    expect(res).toMatchObject({ blobId: 'BLOB123' })
+    expect(flow.register).toHaveBeenCalledTimes(1)
+    expect(executor.signAndExecute).toHaveBeenCalledTimes(2) // register once, certify once
+  })
+
+  it('does not retry once the registration is too old for the relay', async () => {
+    const { mod, flow } = makeModule()
+    let clock = 1_000_000
+    flow.upload.mockImplementation(async () => {
+      clock += REGISTRATION_FRESH_MS + 1
+      throw Object.assign(new Error('relay 502'), { status: 502 })
+    })
+    const err = await rejection(runBlobUpload({ ...baseDeps, access: access([]), executor: makeExecutor(), now: () => clock, loadWalrusClient: async () => mod }))
+    expect(flow.upload).toHaveBeenCalledTimes(1)
+    expect(getUploadRetry(err)).toBeNull()
+  })
+
+  it('an open relay also retries transient failures on the same registration', async () => {
+    const { mod, flow } = makeModule()
+    flow.upload.mockRejectedValueOnce(Object.assign(new Error('relay 503'), { status: 503 }))
+    const executor = makeExecutor()
+    await runBlobUpload({ ...baseDeps, executor, loadWalrusClient: async () => mod })
+    expect(flow.upload).toHaveBeenCalledTimes(2)
+    expect(executor.signAndExecute).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects invalid epochs before any wallet prompt', async () => {
+    const { mod } = makeModule()
+    const executor = makeExecutor()
+    for (const epochs of [0, -1, 1.5, 54, Number.NaN]) {
+      await expect(runBlobUpload({ ...baseDeps, epochs, executor, loadWalrusClient: async () => mod })).rejects.toThrow(/epochs must be/)
+    }
+    expect(executor.signAndExecute).not.toHaveBeenCalled()
   })
 
   it('marks access spent once the upload lands, even if certify then fails', async () => {
@@ -258,64 +362,113 @@ describe('runBlobUpload with gated access', () => {
       waitForTransaction: vi.fn(async () => {}),
     }
     const gate = access(['tok'])
-    await rejection(runBlobUpload({ ...baseDeps, access: gate, executor, loadWalrusClient: async () => mod }))
+    const err = await rejection(runBlobUpload({ ...baseDeps, access: gate, executor, loadWalrusClient: async () => mod }))
     expect(gate.uploaded).toHaveBeenCalledTimes(1)
+    expect(getCertifyRetry(err)).toBeTypeOf('function')
+    expect(getUploadRetry(err)).toBeNull()
   })
 })
 
 describe('createGatedAccess', () => {
+  const NOW = 1_800_000_000_000
   function ports(storage: StorageLike, singleUse = true) {
     return {
       storage,
       key: 'k',
-      relayHost: 'https://relay',
+      relayHost: 'https://relay.example',
       address: '0xabc',
+      gateId: GATE,
+      network: 'testnet' as const,
       nftId: '0xnft',
       singleUse,
       buildConsume: vi.fn((_id: string, nonce: string) => ({ nonce })),
-      signAndExecute: vi.fn(async (_tx: { nonce: string }) => ({ digest: 'fresh-digest' })),
+      signAndExecute: vi.fn(async (_tx: { nonce: string }) => ({ digest: DIGEST })),
       waitForTransaction: vi.fn(async () => {}),
-      sign: vi.fn(async (_m: Uint8Array) => ({ signature: 'sig' })),
+      sign: vi.fn(async (_m: Uint8Array) => ({ signature: 'U0lH' })),
       fetchChallenge: vi.fn(async () => ({ nonce: 'nonce-xyz' })),
+      now: () => NOW,
     }
   }
+  const stored = (over: Record<string, unknown> = {}) => JSON.stringify({ digest: DIGEST2, nftId: '0xnft', savedAt: NOW - 1000, ...over })
 
-  it('consumes a use bound to the challenge nonce and persists the digest before returning', async () => {
+  it('consumes a use bound to the challenge nonce and persists {digest, nftId, savedAt} before signing', async () => {
     const storage = fakeStorage()
     const p = ports(storage)
-    const token = await createGatedAccess(p).token(false)
+    const gate = createGatedAccess(p)
+    await gate.prepare()
     expect(p.buildConsume).toHaveBeenCalledWith('0xnft', 'nonce-xyz')
-    expect(storage.getItem('k')).toBe('fresh-digest')
-    expect(decodeAccessProof(token)).toMatchObject({ address: '0xabc', nonce: 'nonce-xyz', signature: 'sig', consumeDigest: 'fresh-digest' })
+    expect(JSON.parse(storage.getItem('k')!)).toEqual({ digest: DIGEST, nftId: '0xnft', savedAt: NOW })
+    expect(p.sign).not.toHaveBeenCalled() // preparing never signs
+    const token = await gate.token()
+    expect(p.signAndExecute).toHaveBeenCalledTimes(1) // token() reuses the prepared consume
+    expect(decodeAccessProof(token)).toMatchObject({ address: '0xabc', nonce: 'nonce-xyz', signature: 'U0lH', consumeDigest: DIGEST })
   })
 
-  it('reuses a stored digest without consuming another use', async () => {
-    const storage = fakeStorage({ k: 'stored-digest' })
-    const p = ports(storage)
-    const token = await createGatedAccess(p).token(false)
+  it('signs the audience-bound message: relay origin, gate, network, nonce and the consume', async () => {
+    const p = ports(fakeStorage())
+    await createGatedAccess(p).token()
+    expect(new TextDecoder().decode(p.sign.mock.calls[0]![0])).toBe(
+      `nft-gate:access:v2\norigin:https://relay.example\ngate:${GATE}\nnetwork:testnet\nnonce:nonce-xyz\nconsume:${DIGEST}`,
+    )
+  })
+
+  it('reuses a valid stored digest without consuming another use', async () => {
+    const p = ports(fakeStorage({ k: stored() }))
+    const gate = createGatedAccess(p)
+    const token = await gate.token()
     expect(p.signAndExecute).not.toHaveBeenCalled()
-    expect(p.fetchChallenge).toHaveBeenCalledTimes(1) // a fresh challenge is still signed (free)
-    expect(decodeAccessProof(token)?.consumeDigest).toBe('stored-digest')
+    expect(gate.resumed()).toBe(true)
+    expect(decodeAccessProof(token).consumeDigest).toBe(DIGEST2)
+  })
+
+  it('drops a stored value that is malformed, for another pass, stale, or from the future, and consumes anew', async () => {
+    for (const bad of [
+      'plain-old-digest-string',
+      '{"digest":"not base58!","nftId":"0xnft","savedAt":1}',
+      stored({ nftId: '0xother' }),
+      stored({ savedAt: NOW - CONSUME_RESUME_MAX_AGE_MS - 1 }),
+      stored({ savedAt: NOW + 3_600_000 }),
+      stored({ digest: 7 }),
+      '[]',
+      'x'.repeat(5000),
+    ]) {
+      const p = ports(fakeStorage({ k: bad }))
+      const gate = createGatedAccess(p)
+      const token = await gate.token()
+      expect(p.signAndExecute, bad.slice(0, 40)).toHaveBeenCalledTimes(1)
+      expect(gate.resumed()).toBe(false)
+      expect(decodeAccessProof(token).consumeDigest).toBe(DIGEST)
+    }
   })
 
   it('forceFresh drops a stored digest and consumes anew', async () => {
-    const storage = fakeStorage({ k: 'stored-digest' })
-    const p = ports(storage)
-    const token = await createGatedAccess(p).token(true)
+    const p = ports(fakeStorage({ k: stored() }))
+    const token = await createGatedAccess(p).token({ forceFresh: true })
     expect(p.signAndExecute).toHaveBeenCalledTimes(1)
-    expect(decodeAccessProof(token)?.consumeDigest).toBe('fresh-digest')
+    expect(decodeAccessProof(token).consumeDigest).toBe(DIGEST)
+  })
+
+  it('refuses a consume result without a valid digest instead of storing it', async () => {
+    const storage = fakeStorage()
+    const p = ports(storage)
+    for (const digest of [undefined, '', 'DIGEST-1']) {
+      p.signAndExecute.mockResolvedValueOnce({ digest } as never)
+      await expect(createGatedAccess(p).prepare()).rejects.toThrow(/no valid digest/)
+      expect(storage.getItem('k')).toBeNull()
+    }
   })
 
   it('an unlimited pass only signs', async () => {
-    const storage = fakeStorage()
-    const p = ports(storage, false)
-    const token = await createGatedAccess(p).token(false)
+    const p = ports(fakeStorage(), false)
+    const gate = createGatedAccess(p)
+    await gate.prepare()
+    const token = await gate.token()
     expect(p.buildConsume).not.toHaveBeenCalled()
-    expect(decodeAccessProof(token)?.consumeDigest).toBeUndefined()
+    expect(decodeAccessProof(token).consumeDigest).toBeUndefined()
   })
 
   it('uploaded() clears the stored digest', () => {
-    const storage = fakeStorage({ k: 'd' })
+    const storage = fakeStorage({ k: stored() })
     createGatedAccess(ports(storage)).uploaded()
     expect(storage.getItem('k')).toBeNull()
   })
@@ -323,7 +476,28 @@ describe('createGatedAccess', () => {
   it('does not block on an indexing delay after the consume', async () => {
     const p = ports(fakeStorage())
     p.waitForTransaction.mockRejectedValueOnce(new Error('not indexed yet'))
-    await expect(createGatedAccess(p).token(false)).resolves.toBeTypeOf('string')
+    await expect(createGatedAccess(p).token()).resolves.toBeTypeOf('string')
+  })
+})
+
+describe('upload error classification', () => {
+  it('reads an HTTP status from the error, its message or its cause', () => {
+    expect(httpStatusOf({ status: 503 })).toBe(503)
+    expect(httpStatusOf(new Error('relay responded 429 slow down'))).toBe(429)
+    expect(httpStatusOf(new Error('outer', { cause: { status: 401 } }))).toBe(401)
+    expect(httpStatusOf(new Error('network down'))).toBeNull()
+    expect(httpStatusOf(null)).toBeNull()
+  })
+
+  it('names the gateway rejections the flow reacts to', () => {
+    expect(isConsumeRejected(Object.assign(new Error('403 no matching single-use consume for this address'), { status: 403 }))).toBe(true)
+    expect(isConsumeRejected(new Error('403 address does not hold the required access NFT'))).toBe(false)
+    expect(isLeasedConflict({ status: 409, error: { code: 'leased' } })).toBe(true)
+    expect(isLeasedConflict(new Error('409 an upload for this consume is already in progress'))).toBe(true)
+    expect(isLeasedConflict({ status: 409, error: { code: 'redeemed' } })).toBe(false)
+    expect(isStaleProof(new Error('401 missing access proof'))).toBe(true)
+    expect(isStaleProof(new Error('403 challenge nonce invalid, expired, or already used'))).toBe(true)
+    expect(isStaleProof(new Error('403 the gate is paused'))).toBe(false)
   })
 })
 

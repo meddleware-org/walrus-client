@@ -13,6 +13,9 @@ vi.mock('node:fs/promises', () => ({ readFile: (...a: unknown[]) => readFileMock
 import {
   uploadBytes,
   uploadLocalFile,
+  uploadImageBytes,
+  createBlobUploadFlow,
+  maxEpochsAhead,
   createUploadFlow,
   LONG_TERM_EPOCHS,
   MAX_SINGLE_RESERVATION_EPOCHS,
@@ -27,6 +30,9 @@ function fakeClient() {
         calls.writeFiles.push(arg)
         return [{ blobId: 'BLOB', id: 'OBJ' }]
       }),
+      writeBlob: vi.fn(async (arg: any) => ({ blobId: 'RAW', blobObject: { id: 'RAWOBJ' }, arg })),
+      writeBlobFlow: vi.fn((arg: any) => ({ __blobFlow: arg })),
+      systemState: vi.fn(async () => ({ max_epochs_ahead: 60 })),
       writeFilesFlow: vi.fn((arg: any) => {
         calls.writeFilesFlow.push(arg)
         return { __flow: true }
@@ -49,7 +55,7 @@ describe('uploadBytes', () => {
     const res = await uploadBytes(client, new Uint8Array([1, 2, 3]), 'id-1', signer)
     // Default must be a value Walrus actually accepts in one reservation; the
     // LONG_TERM target (200) exceeds max_epochs_ahead and is reached via renewal.
-    expect(calls.writeFiles[0].epochs).toBe(MAX_SINGLE_RESERVATION_EPOCHS)
+    expect(calls.writeFiles[0].epochs).toBe(60) // the live max_epochs_ahead from the system state
     expect(MAX_SINGLE_RESERVATION_EPOCHS).toBe(53)
     expect(LONG_TERM_EPOCHS).toBe(200)
     expect(calls.writeFiles[0].deletable).toBe(false)
@@ -80,8 +86,41 @@ describe('uploadLocalFile', () => {
     const res = await uploadLocalFile(client, '/tmp/icon.png', 'id-3', signer)
     expect(readFileMock).toHaveBeenCalledWith('/tmp/icon.png')
     expect(calls.writeFiles[0].deletable).toBe(false)
-    expect(calls.writeFiles[0].epochs).toBe(MAX_SINGLE_RESERVATION_EPOCHS)
+    expect(calls.writeFiles[0].epochs).toBe(60)
     expect(res).toEqual({ blobId: 'BLOB', blobObjectId: 'OBJ' })
+  })
+})
+
+describe('epochs validation (before any wallet prompt or gas)', () => {
+  it('rejects 0, negatives, fractions, NaN and values above the live maximum', async () => {
+    const { client } = fakeClient()
+    for (const epochs of [0, -3, 2.5, Number.NaN, 61]) {
+      await expect(uploadBytes(client, new Uint8Array([1]), 'x', signer, { epochs })).rejects.toThrow(/epochs must be/)
+    }
+    expect(client.walrus.writeFiles).not.toHaveBeenCalled()
+  })
+
+  it('falls back to 53 when the system state cannot be read', async () => {
+    const { client } = fakeClient()
+    client.walrus.systemState.mockRejectedValue(new Error('rpc down'))
+    expect(await maxEpochsAhead(client)).toBe(MAX_SINGLE_RESERVATION_EPOCHS)
+    client.walrus.systemState.mockResolvedValue({ max_epochs_ahead: 'x' })
+    expect(await maxEpochsAhead(client)).toBe(MAX_SINGLE_RESERVATION_EPOCHS)
+  })
+})
+
+describe('raw blob uploads', () => {
+  it('uploadImageBytes writes a raw blob with safe defaults and maps the ids', async () => {
+    const { client } = fakeClient()
+    const res = await uploadImageBytes(client, new Uint8Array([1]), signer)
+    expect(res).toEqual({ blobId: 'RAW', blobObjectId: 'RAWOBJ' })
+    expect(client.walrus.writeBlob).toHaveBeenCalledWith(expect.objectContaining({ deletable: false, epochs: 60 }))
+    await expect(uploadImageBytes(client, new Uint8Array([1]), signer, { epochs: 0 })).rejects.toThrow(/epochs/)
+  })
+
+  it('createBlobUploadFlow returns the SDK flow without signing', () => {
+    const { client } = fakeClient()
+    expect(createBlobUploadFlow(client, new Uint8Array([2]))).toEqual({ __blobFlow: { blob: new Uint8Array([2]) } })
   })
 })
 
