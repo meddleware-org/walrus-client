@@ -46,6 +46,25 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
     ])
   })
 
+  it('lists a blob whose id is a real u256 (up to 78 digits), not only small test ids', async () => {
+    // A blob id is a 32-byte value shown as a decimal u256. Capping every integer field at u64's 20 digits
+    // dropped every real blob (the owned-blob list was empty on a live network).
+    const realId = ((1n << 255n) + 123456789n).toString() // 77 digits
+    const maxId = ((1n << 256n) - 1n).toString() // 78 digits
+    expect(realId.length).toBe(77)
+    expect(maxId.length).toBe(78)
+    const blob = (objectId: string, id: string) => ({
+      objectId,
+      type: '0xpkg::blob::Blob',
+      json: { blob_id: id, size: '2048', certified_epoch: 1, storage: { end_epoch: 100 } },
+    })
+    const { client } = makeSuiClient([blob('0xa', realId), blob('0xb', maxId), blob('0xc', maxId + '0'), blob('0xd', '1'.repeat(79))])
+    const blobs = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
+    // The two valid ids are listed; an id above u256::MAX (or longer than 78 digits) is not.
+    expect(blobs.map((b) => b.objectId)).toEqual(['0xa', '0xb'])
+    expect(blobs[0]!.blobId).toBe(`blobid-${realId}`)
+  })
+
   it('pages through every owned blob with the cursor', async () => {
     const blob = (id: string) => ({
       objectId: id,

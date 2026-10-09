@@ -19,12 +19,18 @@ function structFields(v: unknown): Record<string, unknown> | undefined {
 /** Upper bound on owned-object pages read by {@link fetchOwnedWalrusBlobs} (50 objects per page). */
 export const MAX_OWNED_BLOB_PAGES = 100
 
-/** A u64/u32 rendered as a decimal string (or number); `null` otherwise. */
-function uintField(v: unknown): bigint | null {
+/**
+ * An unsigned integer rendered as a decimal string (or number); `null` otherwise. A `u64` has at most 20
+ * digits, a `u256` (the blob id) at most 78: the limit follows the field, or a real id would be dropped.
+ */
+function uintField(v: unknown, maxDigits = 20): bigint | null {
   if (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0) return BigInt(v)
-  if (typeof v === 'string' && /^\d{1,20}$/.test(v)) return BigInt(v)
+  if (typeof v === 'string' && v.length <= maxDigits && /^\d+$/.test(v)) return BigInt(v)
   return null
 }
+
+/** The largest `u256` (a blob id's integer form). */
+const MAX_U256 = (1n << 256n) - 1n
 
 /** `type` normalised, or `null` if it is not a struct tag. */
 function normalizedType(type: unknown): string | null {
@@ -92,10 +98,10 @@ export async function fetchOwnedWalrusBlobs(
     // The node filtered by type; check it here too (full normalised type, no look-alikes).
     if (expected === null || normalizedType(obj.type) !== expected) continue
     const fields = structFields(obj.json)
-    const blobIdInt = uintField(fields?.blob_id ?? null)
+    const blobIdInt = uintField(fields?.blob_id ?? null, 78)
     const size = uintField(fields?.size)
     const endEpoch = uintField(structFields(fields?.storage)?.end_epoch)
-    if (!fields || blobIdInt === null || size === null || endEpoch === null) continue
+    if (!fields || blobIdInt === null || blobIdInt > MAX_U256 || size === null || endEpoch === null) continue
     let blobId: string
     try {
       blobId = blobIdFromInt(blobIdInt)

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.27] - 2026-10-09
+
+### Changed
+
+- Fixed: `fetchOwnedWalrusBlobs` listed no blobs on a live network since 0.0.23. Its strict parsing capped every integer field at u64's 20 digits, but a blob id is a u256 (up to 78 digits), so every real blob was skipped (the unit tests used one-digit ids). The id now accepts up to 78 digits and nothing above u256::MAX; the daily localnet integration suite, red since 2026-10-02, caught it
+
 ## [0.0.26] - 2026-10-08
 
 ### Changed (breaking, pre-v0.2)
