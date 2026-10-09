@@ -40,8 +40,12 @@ jobs:
           curl -fsSLo /tmp/suiup.tgz "https://github.com/MystenLabs/suiup/releases/download/v0.0.14/suiup-Linux-musl-x86_64.tar.gz"
           echo "c0b9fea95d52c4c5855478c3ee56e58e446614f32300dbd41fcc637a2e09878a  /tmp/suiup.tgz" | sha256sum -c -
           mkdir -p "$HOME/.local/bin" && tar -xzf /tmp/suiup.tgz -C "$HOME/.local/bin" suiup
-          "$HOME/.local/bin/suiup" install sui@testnet-v1.80.0 --yes
+          "$HOME/.local/bin/suiup" install sui@testnet-v1.81.0 --yes
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # The release asset suiup downloads is not checksum-verified by suiup itself: pin the binary (the
+          # same one the Move packages' CI pins, and the toolchain their Published.toml names).
+          "$HOME/.local/bin/sui" --version
+          echo "c86c0481a44174dfa17af89e71292d6fba5df267c66722ae6797e8793a22f7f1  $HOME/.local/bin/sui" | sha256sum -c -
           # localnet env creation is deferred to bootstrap-localnet.sh (runs after the testbed is up)
 
       - name: Bring up the localnet testbed
