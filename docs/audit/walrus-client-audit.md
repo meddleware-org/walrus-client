@@ -36,7 +36,7 @@ container image), PROXY, GO, RUST, SITE, PLATFORM.
 - Consumed at `^0.0.27` by walrus-ui, walrus-relay, token-deployer-ui and seal-ui (`./http`), and at
   `^0.0.26` by the docs site (which does not list owned blobs, so it is not affected by F23).
 - Depends on `@meddleware/nft-gate-client` `^0.0.16` in 0.0.27 (audience-bound `nft-gate:access:v2` proofs).
-- **0.0.28 (2026-10-10, commit pending, not yet tagged)** carries the fix wave: `^0.0.17` of nft-gate-client
+- **0.0.28 (2026-10-10, commit `cdafcd3`, not yet tagged)** carries the fix wave: `^0.0.17` of nft-gate-client
   with the shared conflict vocabulary (F15 conflict handling, below), shipped declarations and packaging
   (F18), the Info hardening (F14, F15 attributes, F16), the localnet harness pins (F17) and the localnet
   release gate and alert (F24).
@@ -57,7 +57,7 @@ container image), PROXY, GO, RUST, SITE, PLATFORM.
 - Realised ceiling at the first pass: **Medium** (F7). Realised ceiling now: nothing open above Info
   (F7 and F23 are RESOLVED).
 
-**Status:** re-verified 2026-10-09 (first in-repo pass 2026-10-03); fix wave applied 2026-10-10 (0.0.28, commit pending).
+**Status:** re-verified 2026-10-09 (first in-repo pass 2026-10-03); fix wave applied 2026-10-10 (0.0.28, commit `cdafcd3`).
 
 **Finding IDs.** The tests cite three findings of an earlier workspace-corpus audit ("walrus-audit"):
 
@@ -163,7 +163,7 @@ finding-IDs note above.
 shell and Compose). The first pass (2026-10-03, v0.0.25) recorded F7–F22 and changed nothing; between
 2026-10-08 and 2026-10-09 the maintainer released 0.0.26 and 0.0.27, which resolve the actionable
 findings. The 2026-10-09 re-verification re-read every finding against `main` (`83521fc`, v0.0.27); the
-2026-10-10 fix wave (0.0.28, commit pending) closes the findings that were left open or deferred.
+2026-10-10 fix wave (0.0.28, commit `cdafcd3`) closes the findings that were left open or deferred.
 
 **Core disciplines are in place and well tested:**
 
@@ -218,7 +218,7 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
 3. **Low findings F8–F13** are resolved or mitigated: consume storage validated, peer dependencies
    declared, inputs validated, `./http` hardened, `SECURITY.md` corrected, the SDK-honours-`fetch`
    test added.
-4. **2026-10-10 fix wave (0.0.28, commit pending):** F18 (declarations per D34, `SECURITY.md` in
+4. **2026-10-10 fix wave (0.0.28, commit `cdafcd3`):** F18 (declarations per D34, `SECURITY.md` in
    `files`, `engines`, lint and a real build in publish, `AGENTS.md`), F14/F15/F16 (relay and storage
    scheme checks, header merge and no redirects, code-only attribute errors with a Blob check,
    `deletable` and `startEpoch` in listings), the conflict vocabulary of nft-gate-client 0.0.17,
@@ -675,7 +675,7 @@ Item 2 is not done: `localnet/config/relay.yaml` is still `tip_config: !no_tip` 
 
 ### F14 — `relayAuthFetch` and client-construction edge cases
 
-**Severity:** Info   **Disposition:** RESOLVED (0.0.28, commit pending)
+**Severity:** Info   **Disposition:** RESOLVED (0.0.28, commit `cdafcd3`)
 **Where:** `src/client.ts` (`relayAuthFetch`, `createWalrusClient`).
 
 - **Request headers dropped.** With a `Request` object and no `init`, the Request's own headers are
@@ -695,7 +695,7 @@ Item 2 is not done: `localnet/config/relay.yaml` is still `tip_config: !no_tip` 
 - Require https for any non-loopback relay host.
 - Allow `http` storage nodes only when `network === 'localnet'`.
 
-**Remediation / evidence (2026-10-09, then 2026-10-10):** Re-read 2026-10-09: the four sub-items stood and were accepted for testnet because none is reachable from the shipped apps. RESOLVED in 0.0.28 (2026-10-10, commit pending), each as the one-line change the first pass named:
+**Remediation / evidence (2026-10-09, then 2026-10-10):** Re-read 2026-10-09: the four sub-items stood and were accepted for testnet because none is reachable from the shipped apps. RESOLVED in 0.0.28 (2026-10-10, commit `cdafcd3`), each as the one-line change the first pass named:
 
 - **Request headers:** `relayAuthFetch` starts from a `Request`'s own headers, applies `init.headers` over them and then sets Authorization. Test: "F14: the relay call keeps a Request's own headers and never follows a redirect".
 - **Redirects:** the authenticated relay call passes `redirect: 'error'`, so the token cannot follow a redirect (same test).
@@ -704,7 +704,7 @@ Item 2 is not done: `localnet/config/relay.yaml` is still `tip_config: !no_tip` 
 
 ### F15 — Attribute errors are classified by message text
 
-**Severity:** Info   **Disposition:** RESOLVED (0.0.28, commit pending)
+**Severity:** Info   **Disposition:** RESOLVED (0.0.28, commit `cdafcd3`)
 **Where:** `src/manage.ts` (`isMissingFieldError`, `assertBlobObject`, `setBlobAttributes`, `readBlobAttributes`).
 
 **Issue:** `isMissingFieldError` also matches any message containing "does not exist". So:
@@ -715,7 +715,7 @@ Item 2 is not done: `localnet/config/relay.yaml` is still `tip_config: !no_tip` 
 **Original remediation (first pass):** classify by error `code` only; when falling back, first confirm that the
 Blob object exists; add tests.
 
-**Remediation / evidence (2026-10-09, then 2026-10-10):** Re-read 2026-10-09: the message match was unchanged and accepted (a wrong id fails on-chain with a clear error and no funds at risk beyond the failed attempt). RESOLVED in 0.0.28 (2026-10-10, commit pending), as the first pass proposed:
+**Remediation / evidence (2026-10-09, then 2026-10-10):** Re-read 2026-10-09: the message match was unchanged and accepted (a wrong id fails on-chain with a clear error and no funds at risk beyond the failed attempt). RESOLVED in 0.0.28 (2026-10-10, commit `cdafcd3`), as the first pass proposed:
 
 - `isMissingFieldError` classifies by the error `code` only (`notExists`, `dynamicFieldNotFound`); the message fallback is gone.
 - Before the first-write fallback in `setBlobAttributes`, and before `readBlobAttributes` returns `null`, `assertBlobObject` confirms the object exists and is exactly the Walrus Blob type (`getBlobType()`, normalised). A wrong id now throws `walrus-client: no Walrus Blob object <id>` (or `not a Walrus Blob`) instead of reporting "no attributes" or taking the fallback path. The installed SDK (1.2.34) returns `null` itself for a missing field, so the check also runs on that `null`.
@@ -726,7 +726,7 @@ Blob object exists; add tests.
 
 ### F16 — `fetchOwnedWalrusBlobs` omits `deletable`
 
-**Severity:** Info   **Disposition:** RESOLVED (0.0.28, commit pending)
+**Severity:** Info   **Disposition:** RESOLVED (0.0.28, commit `cdafcd3`)
 **Where:** `src/query.ts` (`OwnedBlob`, `fetchOwnedWalrusBlobs`).
 
 **Issue / Impact:** UIs cannot show whether a blob can be deleted by its owner, which is the
@@ -736,11 +736,11 @@ omitted.
 **Original remediation (first pass):** add `deletable: boolean`, parsed strictly like the other fields, and
 optionally `startEpoch`.
 
-**Remediation / evidence (2026-10-09, then 2026-10-10):** Re-read 2026-10-09: no `deletable` or start epoch; accepted because blobs are registered permanent by default. RESOLVED in 0.0.28 (2026-10-10, commit pending): `OwnedBlob` gains `deletable: boolean` and `startEpoch: number`, parsed as strictly as the other fields (an entry whose `deletable` is not a boolean, or whose `start_epoch` is not an unsigned integer, is skipped, never listed with an invented value). Because F23 showed what a wrong guess about the live shape costs, the shape was read from a real testnet Blob object on 2026-10-10 (`deletable: true`, `registered_epoch: 204`, `storage.start_epoch: 204`); that object is the fixture in "lists the epochs and deletability of a blob exactly as a live testnet object reports them". Other tests: "never invents deletability…". The localnet listing test also asserts the new fields (not run in the fix wave). Consumers that build `OwnedBlob` literals in tests need the two new fields.
+**Remediation / evidence (2026-10-09, then 2026-10-10):** Re-read 2026-10-09: no `deletable` or start epoch; accepted because blobs are registered permanent by default. RESOLVED in 0.0.28 (2026-10-10, commit `cdafcd3`): `OwnedBlob` gains `deletable: boolean` and `startEpoch: number`, parsed as strictly as the other fields (an entry whose `deletable` is not a boolean, or whose `start_epoch` is not an unsigned integer, is skipped, never listed with an invented value). Because F23 showed what a wrong guess about the live shape costs, the shape was read from a real testnet Blob object on 2026-10-10 (`deletable: true`, `registered_epoch: 204`, `storage.start_epoch: 204`); that object is the fixture in "lists the epochs and deletability of a blob exactly as a live testnet object reports them". Other tests: "never invents deletability…". The localnet listing test also asserts the new fields (not run in the fix wave). Consumers that build `OwnedBlob` literals in tests need the two new fields.
 
 ### F17 — Localnet harness and integration CI pinning; committed deployer key
 
-**Severity:** Info   **Disposition:** MITIGATED (pinned in 0.0.28, commit pending; not yet exercised by a localnet run); committed key ACCEPTED-RISK, documented
+**Severity:** Info   **Disposition:** MITIGATED (pinned in 0.0.28, commit `cdafcd3`; not yet exercised by a localnet run); committed key ACCEPTED-RISK, documented
 **Where:** `.github/workflows/integration.yml`, `localnet/scripts/lib.sh`, `localnet/relay.compose.yml`,
 `localnet/README.md`.
 
@@ -767,7 +767,7 @@ optionally `startEpoch`.
 
 **Remediation / evidence (2026-10-09):** Fixed in `b3e4715` (2026-10-09): `integration.yml` installs sui `testnet-v1.81.0` (matches the Move repos' `Published.toml`) through `suiup` v0.0.14 whose archive and the resulting `sui` binary are both sha256-checked; the `ACCESS_GATE_REF` checkout and the upstream Walrus checkout are unchanged. Dependabot (`5175f2c`) now updates the pinned actions weekly.
 
-Still open after 2026-10-09 (accepted at the time for an ephemeral localnet-only harness): `npm install`, `access-gate-sui@main`, the Walrus checkout by tag, mutable image tags, the `sudo` fallbacks and the README drift. **Fixed on 2026-10-10 (0.0.28, commit pending)**, each by the single practice for it:
+Still open after 2026-10-09 (accepted at the time for an ephemeral localnet-only harness): `npm install`, `access-gate-sui@main`, the Walrus checkout by tag, mutable image tags, the `sudo` fallbacks and the README drift. **Fixed on 2026-10-10 (0.0.28, commit `cdafcd3`)**, each by the single practice for it:
 
 - `integration.yml` runs `npm ci`.
 - `access-gate-sui` is checked out at `83dbf25f…` (the commit of its `v0.0.6` tag; only docs changed since); the `ACCESS_GATE_REF` variable still overrides it.
@@ -779,7 +779,7 @@ Checks run: `bash -n` and shellcheck 0.11.0 clean; `lib.sh` evaluated with a stu
 
 ### F18 — Packaging, CI and documentation drift
 
-**Severity:** Info   **Disposition:** RESOLVED (0.0.28, commit pending; OQ3 decided by fleet decision D34)
+**Severity:** Info   **Disposition:** RESOLVED (0.0.28, commit `cdafcd3`; OQ3 decided by fleet decision D34)
 
 - **Declarations:** no `.d.ts` and no `types` condition (as in seal-client; unlike the declaration-only
   siblings).
@@ -795,7 +795,7 @@ Checks run: `bash -n` and shellcheck 0.11.0 clean; `lib.sh` evaluated with a stu
 **Original remediation (first pass):** add `SECURITY.md` to `files`; drop `--if-present`; add lint to the
 publish verification; refresh `AGENTS.md`; decide on declarations (OQ3).
 
-**Remediation / evidence (2026-10-09, then 2026-10-10):** Re-read 2026-10-09 against 0.0.27: declarations, `SECURITY.md` in `files`, the publish `verify` lint and `--if-present`, `engines` and `AGENTS.md` were still open and deferred to the 0.2.0 gate. RESOLVED in 0.0.28 (2026-10-10, commit pending). OQ3 needed no maintainer choice: fleet decision D34 (`LENS_GROUNDING_LOG.md`) says every SDK package ships `.d.ts` like its siblings, and the pre-v0.2 policy allows the change in a patch.
+**Remediation / evidence (2026-10-09, then 2026-10-10):** Re-read 2026-10-09 against 0.0.27: declarations, `SECURITY.md` in `files`, the publish `verify` lint and `--if-present`, `engines` and `AGENTS.md` were still open and deferred to the 0.2.0 gate. RESOLVED in 0.0.28 (2026-10-10, commit `cdafcd3`). OQ3 needed no maintainer choice: fleet decision D34 (`LENS_GROUNDING_LOG.md`) says every SDK package ships `.d.ts` like its siblings, and the pre-v0.2 policy allows the change in a patch.
 
 - **Declarations:** `tsconfig.build.json` (declarations only, `src` to `dist`, as in nft-gate-client); `npm run build`; `prepublishOnly` runs it; every `exports` entry is `{ types: ./dist/<name>.d.ts, default: ./src/<name>.ts }`. The package still ships its source (CLAUDE.md invariant updated: no JavaScript output).
 - **`files`:** `src`, `dist`, `CHANGELOG.md`, `SECURITY.md` (`npm pack --dry-run`: 25 files, 37.7 kB).
@@ -900,7 +900,7 @@ and a 79-digit id are skipped). The regression was caught by the nightly localne
 
 ### F24 — The nightly localnet suite is neither alerted on nor a release gate
 
-**Severity:** Low   **Disposition:** RESOLVED (0.0.28, commit pending; OQ5 decided)
+**Severity:** Low   **Disposition:** RESOLVED (0.0.28, commit `cdafcd3`; OQ5 decided)
 **Where:** `.github/workflows/integration.yml` (`schedule` + `workflow_dispatch` only); `.github/workflows/npm-publish.yml` (`verify` runs unit checks only).
 
 **Issue:** the localnet suite is the only test that runs the real Walrus lifecycle, and it is the only
@@ -912,7 +912,7 @@ Docker) and deliberately kept off the PR path.
 owned-blob listings from 2026-10-02 to the 0.0.27 release; the suite did catch it, so detection worked
 and delivery did not.
 
-**Remediation / evidence (2026-10-10):** accepted on 2026-10-09 with the options listed (check the last nightly before tagging, notify on a red run, or run the suite in `verify`). RESOLVED in 0.0.28 (commit pending) with the combination that needs no secrets and no 45-minute wait on the tag:
+**Remediation / evidence (2026-10-10):** accepted on 2026-10-09 with the options listed (check the last nightly before tagging, notify on a red run, or run the suite in `verify`). RESOLVED in 0.0.28 (commit `cdafcd3`) with the combination that needs no secrets and no 45-minute wait on the tag:
 
 - **Alert:** `integration.yml` gains an `alert` job (`issues: write` only) that, on a scheduled run, opens one "Nightly localnet suite is red" issue per red streak, comments on it each further night and closes it when the suite passes (cancelled runs change nothing).
 - **Release gate:** the publish workflow's new `localnet-gate` job (`actions: read`) feeds `gh run list --workflow integration.yml --branch main --status completed` to `.github/localnet-gate.mjs`, and `publish-npm` needs it. A tag is refused when the newest passed-or-failed run on main is red, when none exists, or when the newest green one is older than 72 hours (GitHub pauses schedules on idle repositories, so an old green run must not vouch forever). If a run exists for the tagged commit itself (dispatch the workflow on it for the strict form), that run's verdict is used alone.
@@ -1091,7 +1091,7 @@ historical until a maintainer re-runs `vitest --coverage`.
 - [x] deletable default stated (README, CLAUDE.md, `SECURITY.md`) — F12
 - [x] Blob ownership stated per path in `SECURITY.md` — F11, F12, `d1bb9cc`
 - [x] localnet CLI aligned and checksum-pinned (sui 1.81.0, suiup) — F17, `b3e4715`
-- [x] localnet harness pins (SHA for the upstream checkout, image digests, `npm ci`, `access-gate-sui` ref, opt-in `sudo`) — F17, 0.0.28 (commit pending); shellcheck clean, **not yet exercised by a localnet run** (F17 stays MITIGATED until one is green on the release commit)
+- [x] localnet harness pins (SHA for the upstream checkout, image digests, `npm ci`, `access-gate-sui` ref, opt-in `sudo`) — F17, 0.0.28 (commit `cdafcd3`); shellcheck clean, **not yet exercised by a localnet run** (F17 stays MITIGATED until one is green on the release commit)
 - [x] hermetic regression for the F23 listing bug (u256 blob ids) — `83521fc`
 
 ### pre-mainnet
@@ -1100,9 +1100,9 @@ historical until a maintainer re-runs `vitest --coverage`.
 - [ ] tip ceiling, WAL funding and expiry plan decided — apps (B.WAL-2); maintainer-only
 - [ ] read integrity for content the apps depend on — F11 (aggregator trust documented; the apps decide whether to verify); maintainer-only
 - [x] SDK-honours-`fetch` regression test in CI — `relay-auth-sdk.test.ts`, F13
-- [x] packaging refresh: `.d.ts` (D34), `SECURITY.md` in `files`, lint and no `--if-present` in publish, `engines`, `AGENTS.md` — F18, 0.0.28 (commit pending); `tests/package.test.ts`
-- [x] Info hardening: `relayAuthFetch` edge cases (F14), attribute-error classification (F15), `deletable` in listings (F16) — 0.0.28 (commit pending); `tests/client.test.ts`, `tests/manage.test.ts`, `tests/query.test.ts`
-- [x] localnet suite green on the release commit, or alerted on (OQ5) — F24, 0.0.28 (commit pending): alert issue on a red nightly and the `localnet-gate` release gate; `tests/localnet-gate.test.ts`
+- [x] packaging refresh: `.d.ts` (D34), `SECURITY.md` in `files`, lint and no `--if-present` in publish, `engines`, `AGENTS.md` — F18, 0.0.28 (commit `cdafcd3`); `tests/package.test.ts`
+- [x] Info hardening: `relayAuthFetch` edge cases (F14), attribute-error classification (F15), `deletable` in listings (F16) — 0.0.28 (commit `cdafcd3`); `tests/client.test.ts`, `tests/manage.test.ts`, `tests/query.test.ts`
+- [x] localnet suite green on the release commit, or alerted on (OQ5) — F24, 0.0.28 (commit `cdafcd3`): alert issue on a red nightly and the `localnet-gate` release gate; `tests/localnet-gate.test.ts`
 - [ ] external review — maintainer-only
 
 ---
@@ -1280,7 +1280,7 @@ the harness is localnet-only and no real-chain job exists.
     the localnet suite (no Docker; the maintainer's run PASSED 2026-10-09).
   - **Corrected stale facts:** versions (0.0.27, nft-gate-client 0.0.16, sui 2.35.0, walrus 1.2.34),
     line and file counts, peer/`.npmrc` state, sui CLI 1.81.0, consumers' ranges, Node 24.
-- 2026-10-10 — fix wave on the 0.0.27 tree, producing 0.0.28 (commit pending; nothing tagged or published).
+- 2026-10-10 — fix wave on the 0.0.27 tree, producing 0.0.28 (commit `cdafcd3`; nothing tagged or published).
   - **Resolved:** F14, F15 (attributes and the conflict vocabulary), F16, F18 (OQ3 decided by D34), F24
     (OQ5 decided). **Mitigated, not yet proven by a run:** F17 pins. New findings: none. Section D boxes
     ticked for the F17 pins, F18, the Info hardening and F24.
