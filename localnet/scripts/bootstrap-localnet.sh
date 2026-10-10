@@ -8,11 +8,12 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 # Run as YOUR normal user (NOT via sudo): the testbed Sui config under localnet/.sui must stay
-# user-owned — docker access is handled automatically per-call (`dock` uses `sudo docker` when you're
-# not in a docker group). Running the whole script under sudo would leave root-owned state behind.
+# user-owned — docker access is per call (`dock` uses `sudo docker` only when you opt in with
+# MW_ALLOW_SUDO=1 and are not in a docker group). Running the whole script under sudo would leave
+# root-owned state behind.
 if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
   die "run this WITHOUT sudo:  bash scripts/bootstrap-localnet.sh
-  (docker calls elevate themselves via sudo automatically; you'll be prompted for your password once.)"
+  (with MW_ALLOW_SUDO=1 the docker calls elevate themselves via sudo; you'll be prompted for your password.)"
 fi
 
 require docker
@@ -37,11 +38,16 @@ if ! sui client -y switch --env localnet >/dev/null 2>&1; then
 fi
 
 # Earlier sudo runs may have left generated/ or .env.localnet owned by root; this (non-sudo) run then
-# can't overwrite them. Remove any such root-owned leftovers via sudo (same elevation `dock` uses).
+# can't overwrite them. Removing them needs sudo, so it happens only on explicit opt-in
+# (MW_ALLOW_SUDO=1, the same switch `dock` uses); otherwise stop and say what to do.
 for p in "${LN_GENERATED}" "${LN_ENV_FILE}"; do
   if [ -e "$p" ] && [ ! -w "$p" ]; then
-    warn "removing root-owned $(basename "$p") left by a previous sudo run"
-    sudo rm -rf "$p"
+    if [ "${MW_ALLOW_SUDO}" = "1" ]; then
+      warn "removing root-owned $(basename "$p") left by a previous sudo run"
+      sudo rm -rf "$p"
+    else
+      die "$(basename "$p") is root-owned (left by a previous sudo run) and cannot be overwritten. Remove it yourself (sudo rm -rf '$p') or re-run with MW_ALLOW_SUDO=1."
+    fi
   fi
 done
 mkdir -p "${LN_GENERATED}"

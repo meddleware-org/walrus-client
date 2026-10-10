@@ -77,5 +77,12 @@ describe.skipIf(!LOCALNET_READY)('walrus-client localnet blob lifecycle', () => 
     expect(mine).toBeDefined()
     expect(mine!.blobId).toBe(blobId)
     expect(mine!.certified).toBe(true)
+    // the live Blob shape: a boolean deletable flag and the reservation's epoch range
+    expect(typeof mine!.deletable).toBe('boolean')
+    expect(mine!.startEpoch).toBeLessThanOrEqual(mine!.endEpoch)
+  })
+
+  it('does not report "no attributes" for an object that is not a Blob', async () => {
+    await expect(readBlobAttributes(client, `0x${'ab'.repeat(32)}`)).rejects.toThrow(/no Walrus Blob object/)
   })
 })

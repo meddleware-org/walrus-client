@@ -19,21 +19,26 @@ scripts/down.sh  ──►  tears both down  (--clean also removes generated con
 ```
 
 The upstream `docker/local-testbed` is cloned (shallow, pinned) rather than re-authored here, so the
-storage-node topology tracks upstream. Pin the ref with `WALRUS_REPO_REF` (default `testnet-v1.53.0`,
-aligned with the repo-root toolchain table).
+storage-node topology tracks upstream. The checkout is pinned by commit SHA (`WALRUS_REPO_REF`, default
+the commit of `testnet-v1.56.0`; see "Upstream ref and images" below).
 
 ## Prerequisites
 
 - Docker + Docker Compose v2, with **your user in the `docker` group** so the scripts run **without
   `sudo`**: `sudo usermod -aG docker $USER` then re-login (or `newgrp docker`). The scripts fail
-  fast with this guidance if run as root (root-owned state would be left behind).
+  fast with this guidance if run as root (root-owned state would be left behind), and if the daemon
+  is unreachable. Nothing escalates on its own: on a host without the group, opt in with
+  `MW_ALLOW_SUDO=1` (docker then runs through `sudo -E docker`, and root-owned leftovers are removed
+  with `sudo rm -rf`); without it the scripts stop and say what to do.
 - `sui` CLI on `PATH`. Bootstrap never touches your `~/.sui`: it exports
   `SUI_CONFIG_DIR=localnet/.sui` (git-ignored), creates that config on first run, switches it to the
   `localnet` env and keeps the test address and the imported deploy-admin key there. To inspect the
   testbed with the CLI afterwards: `SUI_CONFIG_DIR=localnet/.sui sui client …`.
 - The fixed deployer key in `scripts/lib.sh` is committed on purpose: it is a public key for the
   ephemeral testbed only. Never fund its address on testnet or mainnet.
-- The `access-gate-sui` repo checked out as a sibling (`repos/access-gate-sui`)
+- The `access-gate-sui` repo checked out as a sibling (`repos/access-gate-sui`). CI checks out the
+  commit of its `v0.0.6` tag (`ACCESS_GATE_REF` repository variable overrides it); move the pin with
+  the access_gate version the suite should deploy.
 
 ## Run
 
@@ -83,11 +88,20 @@ host ports and ships no aggregator/publisher. This harness adapts it for host-dr
   *writes* require sourcing WAL to `WALRUS_TEST_ADDRESS` (e.g. from the deploy admin wallet / treasury)
   — the one remaining step for write-side integration coverage.
 
-## Upstream ref (`WALRUS_REPO_REF`)
+## Upstream ref and images
 
-The harness pins a **release tag** for the scripts (`WALRUS_REPO_REF`, default `testnet-v1.55.2`) and
-**overrides the walrus-service image to the matching tag** (`WALRUS_IMAGE_NAME`, default
-`mysten/walrus-service:testnet-v1.55.2`). `scripts/up.sh` re-checks-out the pinned ref every run.
+Everything the harness pulls is pinned by an immutable reference (tags can be moved or re-pushed):
+
+| What | Pin | Override |
+| --- | --- | --- |
+| `MystenLabs/walrus` checkout (scripts, `docker/local-testbed`, contracts) | commit `a1899b9…` = tag `testnet-v1.56.0` | `WALRUS_REPO_REF` |
+| walrus-service image | `mysten/walrus-service:testnet-v1.56.0@sha256:d4bf4ed…` | `WALRUS_IMAGE_NAME` (or `WALRUS_RELEASE_TAG`, which drops the digest) |
+| upload-relay image | `mysten/walrus-upload-relay:testnet-v1.58.1@sha256:f8d3a10…` | `WALRUS_RELAY_IMAGE` |
+| aggregator image | the walrus-service image above | `WALRUS_IMAGE_NAME` |
+
+`scripts/up.sh` re-checks-out the pinned ref every run. To move to a new release, change the tag, SHA
+and digest defaults in `scripts/lib.sh` together (`git ls-remote https://github.com/MystenLabs/walrus.git
+refs/tags/<tag>`, and the image's index digest from the registry).
 
 > **Why the patched deploy script is always on.** Docker image tags are mutable — `testnet-v1.55.2`
 > initially pointed to a binary using `--contract-dir` (matching the upstream script), but later drifted
@@ -104,6 +118,6 @@ The harness pins a **release tag** for the scripts (`WALRUS_REPO_REF`, default `
 2. **Testbed docker network name** — auto-detected as `local*testbed*`; override `LOCAL_TESTBED_NETWORK`
    if yours differs (standard: `local-testbed_testbed-network`).
 3. **Deploy-outputs volume name** — auto-detected as `*walrus-deploy-outputs*`.
-4. **Relay image tag** — `WALRUS_RELAY_TAG` (default `testnet`) must exist for `mysten/walrus-upload-relay`.
+4. **Relay image** — `WALRUS_RELAY_IMAGE` (default: the digest-pinned `testnet-v1.58.1`) must exist for `mysten/walrus-upload-relay`.
 
 The suites themselves are network-shape agnostic — they read only `.env.localnet`.

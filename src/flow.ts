@@ -13,8 +13,8 @@
 // gateway error never costs a second paid registration; the thrown error then carries `uploadRetry`.
 // Only the single-use consume digest is resumable across loads: it is a permanent on-chain token,
 // redeemed by the gateway only when an upload succeeds.
-import { buildAccessProof, isTransactionDigest } from '@meddleware/nft-gate-client'
-import type { PersonalMessageSigner, SuiNetwork } from '@meddleware/nft-gate-client'
+import { GATEWAY_STATUS, buildAccessProof, isTransactionDigest, parseGatewayError } from '@meddleware/nft-gate-client'
+import type { GatewayConflictCode, PersonalMessageSigner, SuiNetwork } from '@meddleware/nft-gate-client'
 import type { ClientWithCoreApi } from '@mysten/sui/client'
 import { fetchRelayChallenge } from './access.js'
 import { assertEpochs } from './limits.js'
@@ -90,16 +90,29 @@ export function getCertifyRetry<R>(err: unknown): (() => Promise<R>) | null {
 }
 
 /**
- * True if `err` is the gateway's "this consume was already redeemed" rejection: HTTP 409 with
- * `code: 'redeemed'`, as a structured error, in the message, or anywhere in the `cause` chain.
- * Only this re-consumes (spends a new use) — never a transient failure.
+ * The gateway's conflict code (`redeemed` or `leased`) carried by `err`, anywhere in its `cause`
+ * chain: an error with `status` 409 whose `error` is the gateway's JSON body (what the SDK's
+ * upload-relay client attaches), read through nft-gate-client's `parseGatewayError`, so only a code
+ * that package knows is ever returned. Message text is never inspected: both gateways always send
+ * the code.
  */
-export function isRedeemedConflict(err: unknown, depth = 0): boolean {
-  const e = err as { status?: number; error?: { code?: string }; message?: unknown; cause?: unknown } | null
-  if (!e || typeof e !== 'object' || depth > 8) return false
-  if (e.status === 409 && e.error?.code === 'redeemed') return true
-  if (typeof e.message === 'string' && /\b409\b/.test(e.message) && /\bredeemed\b/.test(e.message)) return true
-  return e.cause !== undefined && e.cause !== e && isRedeemedConflict(e.cause, depth + 1)
+export function gatewayConflictCodeOf(err: unknown, depth = 0): GatewayConflictCode | null {
+  const e = err as { status?: unknown; error?: unknown; cause?: unknown } | null
+  if (!e || typeof e !== 'object' || depth > 8) return null
+  if (e.status === GATEWAY_STATUS.conflict) {
+    const code = parseGatewayError(e.error)?.code
+    if (code) return code
+  }
+  return e.cause !== undefined && e.cause !== e ? gatewayConflictCodeOf(e.cause, depth + 1) : null
+}
+
+/**
+ * True if `err` is the gateway's "this consume was already redeemed" rejection: HTTP 409 with
+ * `code: 'redeemed'`, as a structured error or anywhere in the `cause` chain.
+ * Only this re-consumes (spends a new use), never a transient failure.
+ */
+export function isRedeemedConflict(err: unknown): boolean {
+  return gatewayConflictCodeOf(err) === 'redeemed'
 }
 
 /** Shape of an error carrying an upload retry on the same registration. */
@@ -147,12 +160,8 @@ export function isConsumeRejected(err: unknown): boolean {
 }
 
 /** True if `err` is the gateway's "an upload for this consume is already in progress" (409 `leased`). */
-export function isLeasedConflict(err: unknown, depth = 0): boolean {
-  const e = err as { status?: number; error?: { code?: string }; message?: unknown; cause?: unknown } | null
-  if (!e || typeof e !== 'object' || depth > 8) return false
-  if (e.status === 409 && e.error?.code === 'leased') return true
-  if (typeof e.message === 'string' && /\b409\b/.test(e.message) && /in progress/i.test(e.message)) return true
-  return e.cause !== undefined && e.cause !== e && isLeasedConflict(e.cause, depth + 1)
+export function isLeasedConflict(err: unknown): boolean {
+  return gatewayConflictCodeOf(err) === 'leased'
 }
 
 /** True if `err` is a gateway rejection of the challenge/signature (401/403 about the nonce or signature). */

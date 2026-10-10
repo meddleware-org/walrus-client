@@ -12,19 +12,33 @@ LN_GENERATED="${LN_ROOT}/generated"                     # harvested configs (git
 LN_ENV_FILE="${LN_ROOT}/.env.localnet"                  # the contract every suite consumes
 
 # ── tunables (override via env) ───────────────────────────────────────────────
-# Upstream Walrus repo + ref providing docker/local-testbed. Pin to a RECENT tag that still ships
+# Upstream Walrus repo + ref providing docker/local-testbed. Pin to a RECENT release that still ships
 # docker/local-testbed and is internally self-consistent (its image, deploy script, bundled contracts
 # and Sui node all match) — so no downgrade or script patching is needed. `main` has dropped
-# local-testbed, so we track the latest release tag that keeps it. Override via WALRUS_REPO_REF.
+# local-testbed, so we track the latest release that keeps it. The checkout is pinned by COMMIT SHA
+# (a tag can be moved): WALRUS_RELEASE_TAG names the release for humans and for the image tag, and
+# the SHA below is that tag's commit (git ls-remote https://github.com/MystenLabs/walrus.git
+# refs/tags/<tag>). To move to another release, change the three defaults together (tag, SHA,
+# image digest), or override WALRUS_REPO_REF / WALRUS_RELEASE_TAG / WALRUS_IMAGE_NAME for a one-off.
 WALRUS_REPO_URL="${WALRUS_REPO_URL:-https://github.com/MystenLabs/walrus.git}"
-WALRUS_REPO_REF="${WALRUS_REPO_REF:-testnet-v1.56.0}"
+WALRUS_RELEASE_TAG="${WALRUS_RELEASE_TAG:-testnet-v1.56.0}"
+WALRUS_RELEASE_SHA="a1899b94faa34fd8e995ce25560f6cd84d91ba45"          # MystenLabs/walrus @ testnet-v1.56.0
+WALRUS_RELEASE_IMAGE_DIGEST="sha256:d4bf4edce809458ffc2333dec1d1202730674d71bd044248c5a2c0c35ffd9d27" # mysten/walrus-service:testnet-v1.56.0
+# The checkout ref: the pinned SHA while the release tag is the default; a non-default tag is used
+# as given (no SHA is known for it).
+if [ "${WALRUS_RELEASE_TAG}" = "testnet-v1.56.0" ]; then
+  WALRUS_REPO_REF="${WALRUS_REPO_REF:-${WALRUS_RELEASE_SHA}}"
+  WALRUS_IMAGE_DIGEST_SUFFIX="@${WALRUS_RELEASE_IMAGE_DIGEST}"
+else
+  WALRUS_REPO_REF="${WALRUS_REPO_REF:-${WALRUS_RELEASE_TAG}}"
+  WALRUS_IMAGE_DIGEST_SUFFIX=""
+fi
 
-# The upstream compose hardcodes a stale image digest; override to the release-tag image so the
-# binary matches the pinned ref. NOTE: Docker image tags are mutable — even a pinned release tag
-# can be re-pushed with a different binary. Our patched deploy script (MW_PATCH_DEPLOY=1) is the
-# stable layer: it selects flags that match the current binary API. Override WALRUS_IMAGE_NAME
-# if this specific tag 404s or you need to test with a different image.
-export WALRUS_IMAGE_NAME="${WALRUS_IMAGE_NAME:-mysten/walrus-service:${WALRUS_REPO_REF}}"
+# The upstream compose hardcodes a stale image digest; override to the release image so the binary
+# matches the pinned ref. Pinned by digest (tags are mutable: testnet-v1.55.2 was re-pushed with a
+# different CLI). Our patched deploy script (MW_PATCH_DEPLOY=1) remains the layer that selects flags
+# matching the binary API. Override WALRUS_IMAGE_NAME to test with a different image.
+export WALRUS_IMAGE_NAME="${WALRUS_IMAGE_NAME:-mysten/walrus-service:${WALRUS_RELEASE_TAG}${WALRUS_IMAGE_DIGEST_SUFFIX}}"
 # The upstream compose that stands up Sui (validators + faucet + fullnode) + 4 walrus nodes.
 UPSTREAM_COMPOSE="${LN_UPSTREAM}/docker/local-testbed/docker-compose.yaml"
 # Our override — publishes the Sui fullnode + faucet ports to the host (upstream exposes none).
@@ -98,17 +112,22 @@ die()  { printf '\033[1;31m[localnet]\033[0m %s\n' "$*" >&2; exit 1; }
 
 require() { command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"; }
 
-# Docker invocation. Prefer direct access; fall back to `sudo -E docker` when the current user can't
-# reach the daemon (no docker group — some hosts don't even have one). Detected once. This lets the
-# harness run as YOUR user (so `sui` uses your keystore) while docker still works via sudo per-call.
+# Docker invocation. Direct access is the default. The harness never escalates on its own: when the
+# current user cannot reach the daemon (no docker group), it stops with guidance, and only runs
+# `sudo -E docker` when you opt in explicitly with MW_ALLOW_SUDO=1 (the same switch gates the two
+# `sudo rm -rf` clean-ups in bootstrap-localnet.sh and down.sh). That keeps the harness running as
+# YOUR user (so `sui` uses your keystore) while docker works via sudo per call, by choice.
 # -E preserves the calling environment so Docker Compose can interpolate exported vars like
 # MW_DEPLOYER_RUNTIME_CFG, MW_DEPLOY_SCRIPT, MW_CONTRACTS_DIR. We also write those vars to the
 # testbed .env file (see write_testbed_env) as a belt-and-suspenders measure, since some sudoers
 # configs honour env_reset and may drop even -E-preserved variables.
+MW_ALLOW_SUDO="${MW_ALLOW_SUDO:-0}"
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   MW_DOCKER=(docker)
-else
+elif [ "${MW_ALLOW_SUDO}" = "1" ]; then
   MW_DOCKER=(sudo -E docker)
+else
+  die "cannot reach the Docker daemon as this user. Add yourself to the docker group (sudo usermod -aG docker \$USER, then re-login), or opt in to sudo for docker with MW_ALLOW_SUDO=1."
 fi
 dock() { "${MW_DOCKER[@]}" "$@"; }
 

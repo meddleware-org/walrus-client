@@ -1,21 +1,38 @@
 import type { Signer } from '@mysten/sui/cryptography'
 import { Transaction } from '@mysten/sui/transactions'
+import { normalizeStructTag } from '@mysten/sui/utils'
 import type { createWalrusClient } from './client.js'
 
 /** A Walrus-extended Sui client, as returned by {@link createWalrusClient}. */
 export type WalrusClient = ReturnType<typeof createWalrusClient>
 
 /**
- * True when `err` is a Sui "object / dynamic field not found" error. A blob with no attributes yet
- * has no `metadata` dynamic field, so a lookup of it fails this way. `@mysten/sui`'s `ObjectError`
- * is not exported, so we duck-type on its `code` (`'notExists'` for the derived field object,
- * `'dynamicFieldNotFound'` for the parent) with a message fallback.
+ * True when `err` is a Sui "object / dynamic field not found" error, classified by its `code` only
+ * (`'notExists'` for the derived field object, `'dynamicFieldNotFound'` for the parent): `@mysten/sui`'s
+ * `ObjectError` is not exported, so we duck-type on it. Message text is never matched. The same code
+ * is raised for a wrong parent id, so callers confirm the Blob exists ({@link assertBlobObject}).
  */
 function isMissingFieldError(err: unknown): boolean {
-  const code = (err as { code?: string } | null)?.code
-  if (code === 'notExists' || code === 'dynamicFieldNotFound') return true
-  const msg = err instanceof Error ? err.message : ''
-  return /does not exist|Dynamic field not found/.test(msg)
+  const code = (err as { code?: unknown } | null)?.code
+  return code === 'notExists' || code === 'dynamicFieldNotFound'
+}
+
+/**
+ * Throw unless `blobObjectId` is an existing Walrus Blob object (exact normalised type), so "this
+ * blob has no attributes yet" is never confused with "there is no such blob".
+ */
+async function assertBlobObject(client: WalrusClient, blobObjectId: string): Promise<void> {
+  const blobType = await client.walrus.getBlobType()
+  let type: string
+  try {
+    type = (await client.core.getObject({ objectId: blobObjectId })).object.type
+  } catch (err) {
+    if (isMissingFieldError(err)) throw new Error(`walrus-client: no Walrus Blob object ${blobObjectId}`, { cause: err })
+    throw err
+  }
+  if (normalizeStructTag(type) !== normalizeStructTag(blobType)) {
+    throw new Error(`walrus-client: object ${blobObjectId} is not a Walrus Blob`)
+  }
 }
 
 /**
@@ -157,8 +174,10 @@ export async function setBlobAttributes(
     // existing attributes to compute a diff, which throws here (the field doesn't exist yet). Rebuild
     // passing `blobObject` instead of `blobObjectId` — that path skips the read and adds the metadata
     // struct itself (null-valued keys are simply skipped, correct for a fresh blob). The SDK still
-    // signs, executes, and waits internally.
+    // signs, executes, and waits internally. The same error also means "no such object", so the
+    // Blob is confirmed to exist first.
     if (!isMissingFieldError(err)) throw err
+    await assertBlobObject(client, blobObjectId)
     const tx = new Transaction()
     const result = await client.walrus.executeWriteBlobAttributesTransaction({
       transaction: tx,
@@ -198,12 +217,17 @@ export async function readBlobAttributes(
   client: WalrusClient,
   blobObjectId: string,
 ): Promise<Record<string, string> | null> {
+  let attributes: Record<string, string> | null
   try {
-    return await client.walrus.readBlobAttributes({ blobObjectId })
+    attributes = await client.walrus.readBlobAttributes({ blobObjectId })
   } catch (err) {
-    // A blob with no attributes has no `metadata` dynamic field; the SDK throws rather than returning
-    // null. Honour this function's documented contract by returning null for that case.
-    if (isMissingFieldError(err)) return null
-    throw err
+    // A blob with no attributes has no `metadata` dynamic field; older SDKs throw rather than
+    // returning null. Honour this function's documented contract for that case, and only that case.
+    if (!isMissingFieldError(err)) throw err
+    attributes = null
   }
+  if (attributes !== null) return attributes
+  // `null` must mean "this Blob has no attributes", never "no such object" (the SDK cannot tell the two apart).
+  await assertBlobObject(client, blobObjectId)
+  return null
 }

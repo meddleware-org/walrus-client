@@ -1,6 +1,6 @@
 {
   "name": "@meddleware/walrus-client",
-  "version": "0.0.27",
+  "version": "0.0.28",
   "homepage": "https://docs.meddleware.co.uk/blockchain/sui/walrus-storage/",
   "type": "module",
   "description": "Walrus decentralised storage client and asset management utilities for Sui applications.",
@@ -18,16 +18,35 @@
   ],
   "files": [
     "src",
-    "CHANGELOG.md"
+    "dist",
+    "CHANGELOG.md",
+    "SECURITY.md"
   ],
   "sideEffects": false,
+  "engines": {
+    "node": ">=24"
+  },
   "exports": {
-    ".": "./src/index.ts",
-    "./flow": "./src/flow.ts",
-    "./http": "./src/http.ts",
-    "./node": "./src/node.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./flow": {
+      "types": "./dist/flow.d.ts",
+      "default": "./src/flow.ts"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "default": "./src/http.ts"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "default": "./src/node.ts"
+    }
   },
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -36,7 +55,7 @@
     "lint": "npm run lint:js"
   },
   "dependencies": {
-    "@meddleware/nft-gate-client": "^0.0.16"
+    "@meddleware/nft-gate-client": "^0.0.17"
   },
   "devDependencies": {
     "@mysten/sui": "^2.35.0",

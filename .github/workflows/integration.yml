@@ -1,7 +1,8 @@
 name: Integration (localnet)
 
 # Opt-in, heavy localnet e2e — kept off the PR path so normal CI stays fast. Runs on demand and
-# nightly. Brings up the Docker-Compose Walrus testbed (localnet/) and runs the real blob-lifecycle
+# nightly. A red scheduled run opens (or refreshes) a GitHub issue, and the publish workflow refuses a
+# tag while the latest run is red (.github/localnet-gate.mjs). Brings up the Docker-Compose Walrus testbed (localnet/) and runs the real blob-lifecycle
 # suite against it. See localnet/README.md.
 on:
   workflow_dispatch:
@@ -26,7 +27,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: meddleware-org/access-gate-sui
-          ref: ${{ vars.ACCESS_GATE_REF || 'main' }}
+          # The commit of the access-gate-sui v0.0.6 tag (a SHA, not a moving ref); the ACCESS_GATE_REF
+          # repository variable overrides it to test another access_gate.
+          ref: ${{ vars.ACCESS_GATE_REF || '83dbf25f026aa4be78ad6ec7cae47221c0743bf0' }}
           path: repos/access-gate-sui
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -58,7 +61,7 @@ jobs:
 
       - name: Install deps
         working-directory: repos/walrus-client
-        run: npm install
+        run: npm ci
 
       - name: Run localnet integration suite
         working-directory: repos/walrus-client
@@ -70,3 +73,40 @@ jobs:
         if: always()
         working-directory: repos/walrus-client/localnet
         run: bash scripts/down.sh || true
+
+  # A red nightly used to go unnoticed (0.0.26 shipped while the suite was red). On a scheduled run,
+  # open one issue per red streak and comment on it each further night; close it when the suite
+  # passes again. A manual (workflow_dispatch) run is watched by whoever started it.
+  alert:
+    name: Alert on a red nightly
+    needs: localnet
+    if: ${{ always() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RESULT: ${{ needs.localnet.result }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      TITLE: Nightly localnet suite is red
+    steps:
+      - name: Open, refresh or close the issue
+        run: |
+          # A cancelled run says nothing about the code; leave the issue as it is.
+          case "$RESULT" in success|failure) ;; *) echo "result '$RESULT': nothing to do"; exit 0 ;; esac
+          OPEN=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title --jq "[.[] | select(.title == \"$TITLE\")][0].number // empty")
+          if [ "$RESULT" = "success" ]; then
+            if [ -n "$OPEN" ]; then
+              gh issue close "$OPEN" --comment "The nightly localnet suite passed again: $RUN_URL"
+            fi
+          elif [ -n "$OPEN" ]; then
+            gh issue comment "$OPEN" --body "Still $RESULT: $RUN_URL"
+          else
+            gh issue create --title "$TITLE" --body "The scheduled localnet integration suite finished with: $RESULT.
+
+          Run: $RUN_URL
+
+          The publish workflow refuses a release tag while the latest run is red (.github/localnet-gate.mjs). Fix the failure, then dispatch \"Integration (localnet)\" on main."
+          fi

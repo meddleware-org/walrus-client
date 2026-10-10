@@ -1,7 +1,8 @@
 // Unit tests for the headless upload orchestrator and its resume conventions. A fake root module is
 // injected via `loadWalrusClient`, so no wasm, wallet or network is touched.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { decodeAccessProof } from '@meddleware/nft-gate-client'
+import { GATEWAY_CONFLICT_CODES, decodeAccessProof } from '@meddleware/nft-gate-client'
+import { StorageNodeAPIError } from '@mysten/walrus'
 import {
   CONSUME_RESUME_MAX_AGE_MS,
   REGISTRATION_FRESH_MS,
@@ -17,6 +18,7 @@ import {
   isLeasedConflict,
   isRedeemedConflict,
   isStaleProof,
+  gatewayConflictCodeOf,
   loadPendingCertifies,
   browserStorage,
   pendingCertifyKey,
@@ -27,6 +29,11 @@ import {
   type UploadProgress,
   type WalrusClientModule,
 } from '../src/flow.js'
+
+/** The error the SDK's upload-relay client throws for a gateway 409: `status` 409, `error` the JSON body. */
+function conflict(code: string): StorageNodeAPIError {
+  return StorageNodeAPIError.generate(409, { error: `consume ${code}`, code }, undefined)
+}
 
 function fakeStorage(seed: Record<string, string> = {}): StorageLike & { map: Map<string, string> } {
   const map = new Map<string, string>(Object.entries(seed))
@@ -247,7 +254,7 @@ describe('runBlobUpload with gated access', () => {
 
   it('after a redeemed conflict, spends a new use and retries on the same registration', async () => {
     const { mod, flow } = makeModule()
-    flow.upload.mockRejectedValueOnce(Object.assign(new Error('relay 409'), { status: 409, error: { code: 'redeemed' } }))
+    flow.upload.mockRejectedValueOnce(conflict('redeemed'))
     const gate = access(['tok-1', 'tok-2'])
     await runBlobUpload({ ...baseDeps, access: gate, executor: makeExecutor(), loadWalrusClient: async () => mod })
     expect(gate.token.mock.calls).toEqual([[{ forceFresh: false }], [{ forceFresh: true }]])
@@ -492,9 +499,9 @@ describe('upload error classification', () => {
   it('names the gateway rejections the flow reacts to', () => {
     expect(isConsumeRejected(Object.assign(new Error('403 no matching single-use consume for this address'), { status: 403 }))).toBe(true)
     expect(isConsumeRejected(new Error('403 address does not hold the required access NFT'))).toBe(false)
-    expect(isLeasedConflict({ status: 409, error: { code: 'leased' } })).toBe(true)
-    expect(isLeasedConflict(new Error('409 an upload for this consume is already in progress'))).toBe(true)
-    expect(isLeasedConflict({ status: 409, error: { code: 'redeemed' } })).toBe(false)
+    expect(isLeasedConflict(conflict('leased'))).toBe(true)
+    expect(isLeasedConflict(new Error('409 an upload for this consume is already in progress'))).toBe(false)
+    expect(isLeasedConflict(conflict('redeemed'))).toBe(false)
     expect(isStaleProof(new Error('401 missing access proof'))).toBe(true)
     expect(isStaleProof(new Error('403 challenge nonce invalid, expired, or already used'))).toBe(true)
     expect(isStaleProof(new Error('403 the gate is paused'))).toBe(false)
@@ -502,16 +509,30 @@ describe('upload error classification', () => {
 })
 
 describe('isRedeemedConflict', () => {
-  it('matches a structured 409 redeemed', () => {
-    expect(isRedeemedConflict({ status: 409, error: { code: 'redeemed' } })).toBe(true)
-    expect(isRedeemedConflict({ status: 409, error: { code: 'leased' } })).toBe(false)
-    expect(isRedeemedConflict({ status: 500, error: { code: 'redeemed' } })).toBe(false)
+  it('matches the real SDK 409 error carrying the gateway body', () => {
+    const err = conflict('redeemed')
+    expect(err.status).toBe(409)
+    expect(isRedeemedConflict(err)).toBe(true)
+    expect(isRedeemedConflict(conflict('leased'))).toBe(false)
+    expect(gatewayConflictCodeOf(conflict('leased'))).toBe('leased')
   })
 
-  it('matches the message form and a wrapped cause', () => {
-    expect(isRedeemedConflict(new Error('Upload relay responded 409: consume already redeemed'))).toBe(true)
-    expect(isRedeemedConflict(new Error('outer', { cause: { status: 409, error: { code: 'redeemed' } } }))).toBe(true)
+  it('knows exactly the codes nft-gate-client exports', () => {
+    for (const code of GATEWAY_CONFLICT_CODES) expect(gatewayConflictCodeOf(conflict(code))).toBe(code)
+    expect(gatewayConflictCodeOf(StorageNodeAPIError.generate(409, { error: 'x', code: 'invented' }, undefined))).toBeNull()
+  })
+
+  it('needs the 409 status and a well-formed gateway body', () => {
+    expect(isRedeemedConflict({ status: 500, error: { error: 'x', code: 'redeemed' } })).toBe(false)
+    expect(isRedeemedConflict({ status: 409, error: { code: 'redeemed' } })).toBe(false)
+    expect(isRedeemedConflict({ status: 409, error: 'redeemed' })).toBe(false)
+  })
+
+  it('finds the code in a wrapped cause, and never reads message text', () => {
+    expect(isRedeemedConflict(new Error('outer', { cause: conflict('redeemed') }))).toBe(true)
+    expect(isRedeemedConflict(new Error('Upload relay responded 409: consume already redeemed'))).toBe(false)
     expect(isRedeemedConflict(new Error('409 conflict'))).toBe(false)
+    expect(isRedeemedConflict(Object.assign(new Error('409 redeemed'), { status: 409 }))).toBe(false)
   })
 
   it('is false for other values', () => {

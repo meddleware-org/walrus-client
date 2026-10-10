@@ -1,8 +1,9 @@
 name: Publish (npm)
 
 # Publishes the package to npmjs on a v* tag. Publication is gated on a
-# self-contained `verify` job (type-check + test + build) that re-runs the
-# checks against the exact tagged commit, so a broken tag never ships.
+# self-contained `verify` job (type-check + lint + test + build) that re-runs the
+# checks against the exact tagged commit, and on the localnet suite not being red
+# (`localnet-gate`), so a broken tag never ships.
 # Authentication uses npm OIDC trusted publishing — no long-lived NPM_TOKEN.
 
 on:
@@ -15,7 +16,7 @@ permissions:
 
 jobs:
   verify:
-    name: Verify (type-check + test)
+    name: Verify (type-check + lint + test + build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,14 +31,41 @@ jobs:
         run: npm audit --audit-level=high
       - name: Type-check
         run: npm run type-check
+      - name: Lint
+        run: npm run lint
       - name: Unit tests
         run: npm test
       - name: Build
-        run: npm run build --if-present
+        run: npm run build
+
+  # The localnet suite is the only test that runs the real Walrus lifecycle (it caught F23). It is
+  # too heavy for the tag, so the gate reads the result of the nightly / dispatched run instead:
+  # a red newest run on main, no run, or a green one older than 72 h blocks the release. To release
+  # right after a fix, dispatch "Integration (localnet)" on main (or on the commit you tag: a run for
+  # the tagged commit is judged on its own) and wait for it to pass before pushing the tag.
+  localnet-gate:
+    name: Localnet suite is not red
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Latest localnet run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_SHA: ${{ github.sha }}
+        run: |
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow integration.yml --branch main \
+            --status completed --limit 30 \
+            --json conclusion,headSha,url,createdAt,event | node .github/localnet-gate.mjs
 
   publish-npm:
     name: npmjs (@meddleware/walrus-client)
-    needs: verify
+    needs: [verify, localnet-gate]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -54,7 +82,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build
-        run: npm run build --if-present
+        run: npm run build
       - name: Tag matches the package version
         env:
           TAG: ${{ github.ref_name }}

@@ -50,10 +50,14 @@ export type OwnedBlob = {
   blobId: string
   /** Size in bytes. */
   size: number
+  /** Epoch at which the blob's storage reservation starts. */
+  startEpoch: number
   /** Epoch at which the blob's storage expires. */
   endEpoch: number
   /** Whether the blob has been certified. */
   certified: boolean
+  /** Whether its owner can delete it before expiry (blobs are registered permanent by default). */
+  deletable: boolean
 }
 
 /**
@@ -100,8 +104,21 @@ export async function fetchOwnedWalrusBlobs(
     const fields = structFields(obj.json)
     const blobIdInt = uintField(fields?.blob_id ?? null, 78)
     const size = uintField(fields?.size)
-    const endEpoch = uintField(structFields(fields?.storage)?.end_epoch)
-    if (!fields || blobIdInt === null || blobIdInt > MAX_U256 || size === null || endEpoch === null) continue
+    const storage = structFields(fields?.storage)
+    const startEpoch = uintField(storage?.start_epoch)
+    const endEpoch = uintField(storage?.end_epoch)
+    const deletable = fields?.deletable
+    if (
+      !fields ||
+      blobIdInt === null ||
+      blobIdInt > MAX_U256 ||
+      size === null ||
+      startEpoch === null ||
+      endEpoch === null ||
+      typeof deletable !== 'boolean'
+    ) {
+      continue
+    }
     let blobId: string
     try {
       blobId = blobIdFromInt(blobIdInt)
@@ -113,8 +130,10 @@ export async function fetchOwnedWalrusBlobs(
       blobId,
       // Safe as numbers: epochs are u32 and a blob's size is bounded far below 2^53.
       size: Number(size),
+      startEpoch: Number(startEpoch),
       endEpoch: Number(endEpoch),
       certified: fields.certified_epoch !== null && fields.certified_epoch !== undefined,
+      deletable,
     })
   }
   return blobs

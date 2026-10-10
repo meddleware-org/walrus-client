@@ -30,7 +30,7 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
         objectId: '0xobj1',
         type: '0xpkg::blob::Blob',
         // gRPC/core returns Move struct fields flat under `json`.
-        json: { blob_id: '123', size: '2048', certified_epoch: 42, storage: { end_epoch: 100 } },
+        json: { blob_id: '123', size: '2048', certified_epoch: 42, deletable: false, storage: { start_epoch: 1, end_epoch: 100 } },
       },
     ])
 
@@ -42,7 +42,7 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
       include: { json: true },
     })
     expect(blobs).toEqual([
-      { objectId: '0xobj1', blobId: 'blobid-123', size: 2048, endEpoch: 100, certified: true },
+      { objectId: '0xobj1', blobId: 'blobid-123', size: 2048, startEpoch: 1, endEpoch: 100, certified: true, deletable: false },
     ])
   })
 
@@ -56,7 +56,7 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
     const blob = (objectId: string, id: string) => ({
       objectId,
       type: '0xpkg::blob::Blob',
-      json: { blob_id: id, size: '2048', certified_epoch: 1, storage: { end_epoch: 100 } },
+      json: { blob_id: id, size: '2048', certified_epoch: 1, deletable: false, storage: { start_epoch: 1, end_epoch: 100 } },
     })
     const { client } = makeSuiClient([blob('0xa', realId), blob('0xb', maxId), blob('0xc', maxId + '0'), blob('0xd', '1'.repeat(79))])
     const blobs = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
@@ -69,7 +69,7 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
     const blob = (id: string) => ({
       objectId: id,
       type: '0xpkg::blob::Blob',
-      json: { blob_id: '1', size: '1', certified_epoch: 1, storage: { end_epoch: 9 } },
+      json: { blob_id: '1', size: '1', certified_epoch: 1, deletable: false, storage: { start_epoch: 1, end_epoch: 9 } },
     })
     const listOwnedObjects = vi
       .fn()
@@ -86,11 +86,11 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
       {
         objectId: '0xobj1b',
         type: '0xpkg::blob::Blob',
-        json: { fields: { blob_id: '9', size: '5', certified_epoch: 1, storage: { fields: { end_epoch: 50 } } } },
+        json: { fields: { blob_id: '9', size: '5', certified_epoch: 1, deletable: false, storage: { fields: { start_epoch: 40, end_epoch: 50 } } } },
       },
     ])
     const [blob] = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
-    expect(blob).toEqual({ objectId: '0xobj1b', blobId: 'blobid-9', size: 5, endEpoch: 50, certified: true })
+    expect(blob).toEqual({ objectId: '0xobj1b', blobId: 'blobid-9', size: 5, startEpoch: 40, endEpoch: 50, certified: true, deletable: false })
   })
 
   it('marks blobs with a null certified_epoch as uncertified', async () => {
@@ -98,7 +98,7 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
       {
         objectId: '0xobj2',
         type: '0xpkg::blob::Blob',
-        json: { blob_id: '7', size: '10', certified_epoch: null, storage: { end_epoch: '5' } },
+        json: { blob_id: '7', size: '10', certified_epoch: null, deletable: false, storage: { start_epoch: 1, end_epoch: '5' } },
       },
     ])
     const [blob] = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
@@ -106,20 +106,53 @@ describe('fetchOwnedWalrusBlobs (gRPC core API)', () => {
     expect(blob!.endEpoch).toBe(5)
   })
 
+  it('lists the epochs and deletability of a blob exactly as a live testnet object reports them', async () => {
+    // Captured from a real testnet Blob object (gRPC json): u64 fields are strings, u32 epochs numbers.
+    const { client } = makeSuiClient([
+      {
+        objectId: '0x0000050b53d7416f86404c649224f3cdc9846d544c2d4e921601baa8c0df00e7',
+        type: '0xpkg::blob::Blob',
+        json: {
+          blob_id: '80825333549667643570597252035902256285625078742945962467090534703841599275567',
+          certified_epoch: 204,
+          deletable: true,
+          encoding_type: 1,
+          id: '0x0000050b53d7416f86404c649224f3cdc9846d544c2d4e921601baa8c0df00e7',
+          registered_epoch: 204,
+          size: '1048576',
+          storage: { end_epoch: 205, id: '0x1198f107c6adce87a6251fe0a648b4e5d939c1526d43858d42e8068f8d645d5d', start_epoch: 204, storage_size: '70038000' },
+        },
+      },
+    ])
+    const [blob] = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
+    expect(blob).toMatchObject({ size: 1048576, startEpoch: 204, endEpoch: 205, certified: true, deletable: true })
+  })
+
+  it('never invents deletability: a blob whose deletable flag is missing or not a boolean is skipped', async () => {
+    const entry = (objectId: string, deletable: unknown) => ({
+      objectId,
+      type: '0xpkg::blob::Blob',
+      json: { blob_id: '1', size: '1', certified_epoch: 1, ...(deletable === undefined ? {} : { deletable }), storage: { start_epoch: 1, end_epoch: 9 } },
+    })
+    const { client } = makeSuiClient([entry('0xa', undefined), entry('0xb', 'true'), entry('0xc', 1), entry('0xd', true), entry('0xe', false)])
+    const blobs = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
+    expect(blobs.map((b) => [b.objectId, b.deletable])).toEqual([['0xd', true], ['0xe', false]])
+  })
+
   it('never invents a value: a blob missing its size or end epoch is skipped', async () => {
     const { client } = makeSuiClient([
       { objectId: '0xa', type: '0xpkg::blob::Blob', json: { blob_id: '7', size: '10', storage: {} } },
-      { objectId: '0xb', type: '0xpkg::blob::Blob', json: { blob_id: '7', storage: { end_epoch: '5' } } },
-      { objectId: '0xc', type: '0xpkg::blob::Blob', json: { blob_id: '7', size: 'ten', storage: { end_epoch: '5' } } },
+      { objectId: '0xb', type: '0xpkg::blob::Blob', json: { blob_id: '7', storage: { start_epoch: 1, end_epoch: '5' } } },
+      { objectId: '0xc', type: '0xpkg::blob::Blob', json: { blob_id: '7', size: 'ten', storage: { start_epoch: 1, end_epoch: '5' } } },
     ])
     expect(await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')).toEqual([])
   })
 
   it('skips objects that are not exactly the Blob type, comparing normalised types', async () => {
     const { client } = makeSuiClient([
-      { objectId: '0xa', type: '0xevil::blob::Blob', json: { blob_id: '7', size: '1', storage: { end_epoch: '5' } } },
-      { objectId: '0xb', type: `0x${'0'.repeat(61)}pkg::blob::Blob`.replace('pkg', 'abc'), json: { blob_id: '7', size: '1', storage: { end_epoch: '5' } } },
-      { objectId: '0xc', type: '0xPKG::blob::Blob', json: { blob_id: '8', size: '1', storage: { end_epoch: '5' } } },
+      { objectId: '0xa', type: '0xevil::blob::Blob', json: { blob_id: '7', size: '1', storage: { start_epoch: 1, end_epoch: '5' } } },
+      { objectId: '0xb', type: `0x${'0'.repeat(61)}pkg::blob::Blob`.replace('pkg', 'abc'), json: { blob_id: '7', size: '1', storage: { start_epoch: 1, end_epoch: '5' } } },
+      { objectId: '0xc', type: '0xPKG::blob::Blob', json: { blob_id: '8', size: '1', deletable: false, storage: { start_epoch: 1, end_epoch: '5' } } },
     ])
     const blobs = await fetchOwnedWalrusBlobs(client, makeWalrusClient(), '0xowner')
     expect(blobs.map((b) => b.objectId)).toEqual(['0xc'])

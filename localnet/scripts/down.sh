@@ -21,11 +21,15 @@ if [ "${1:-}" = "--clean" ]; then
   # The testbed Sui config (localnet/.sui) only holds keys for the chain being destroyed.
   rm -rf "${LN_GENERATED}" "${LN_ENV_FILE}" "${LN_SUI_CONFIG_DIR}" 2>/dev/null || true
   # Docker may create root-owned directories inside the upstream checkout (e.g. when a testbed.override
-  # uses a relative path that resolves into .walrus-upstream/). Remove with the same sudo escalation
-  # that dock() uses; fall back to plain rm on hosts where docker runs without sudo.
+  # uses a relative path that resolves into .walrus-upstream/). A plain rm is tried first; the sudo
+  # escalation happens only on explicit opt-in (MW_ALLOW_SUDO=1), otherwise the leftover is reported.
   if [ -d "${LN_UPSTREAM}" ]; then
     if ! rm -rf "${LN_UPSTREAM}" 2>/dev/null; then
-      sudo rm -rf "${LN_UPSTREAM}"
+      if [ "${MW_ALLOW_SUDO}" = "1" ]; then
+        sudo rm -rf "${LN_UPSTREAM}"
+      else
+        warn "could not remove ${LN_UPSTREAM} (root-owned files inside). Remove it with sudo yourself, or re-run with MW_ALLOW_SUDO=1."
+      fi
     fi
   fi
   log "removed generated config, .env.localnet, the testbed Sui config (.sui) and .walrus-upstream"

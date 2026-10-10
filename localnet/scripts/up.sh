@@ -9,7 +9,7 @@ require git
 dock compose version >/dev/null 2>&1 || die "docker compose v2 is required"
 
 # 1. Pin the upstream walrus checkout (shallow) that provides docker/local-testbed. We fetch + check
-#    out the exact pinned ref every run (works for tags, branches, or a commit SHA on GitHub), so
+#    out the exact pinned ref every run (the default is a commit SHA; tags and branches also work), so
 #    changing WALRUS_REPO_REF re-pins an existing checkout rather than silently reusing a stale one.
 if [ ! -d "${LN_UPSTREAM}/.git" ]; then
   log "initialising .walrus-upstream"
@@ -22,7 +22,7 @@ git -C "${LN_UPSTREAM}" fetch --depth 1 origin "${WALRUS_REPO_REF}" 2>/dev/null 
   || die "could not fetch ref '${WALRUS_REPO_REF}' from ${WALRUS_REPO_URL}"
 git -C "${LN_UPSTREAM}" checkout -q --force FETCH_HEAD
 
-[ -f "${UPSTREAM_COMPOSE}" ] || die "upstream compose not found at ${UPSTREAM_COMPOSE} — docker/local-testbed may not exist for ref ${WALRUS_REPO_REF} (pin a release tag that still ships it, e.g. testnet-v1.55.2)."
+[ -f "${UPSTREAM_COMPOSE}" ] || die "upstream compose not found at ${UPSTREAM_COMPOSE} — docker/local-testbed may not exist for ref ${WALRUS_REPO_REF} (pin a release that still ships it, e.g. WALRUS_RELEASE_TAG=testnet-v1.56.0)."
 
 # The upstream compose still declares the obsolete top-level `version:` key, which Compose v2 warns
 # about on every invocation. Strip it from our throwaway checkout (gitignored + re-checked-out each

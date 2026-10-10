@@ -82,7 +82,7 @@ const client = createWalrusClient({
   network: 'testnet',             // 'testnet' | 'mainnet' (default: 'testnet')
   rpcUrl: '...',                  // Optional: override the Sui fullnode URL
   wasmUrl: '...',                 // Required for browser/Vite; ignored in Node.js
-  uploadRelayHost: '...',         // Optional upload relay URL
+  uploadRelayHost: '...',         // Optional upload relay URL; must be https (plain http only for localhost)
   uploadRelayAuthToken: '...',    // Optional Bearer token for NFT-gated relay access
   uploadRelayMaxTipMist: 50_000_000, // Optional tip max in MIST (default: 50_000_000 = 0.05 SUI)
   disableUploadRelay: false,      // Bypass the relay entirely (direct to storage nodes)
@@ -161,7 +161,7 @@ Read current attributes.
 
 **`fetchOwnedWalrusBlobs(suiClient, walrusClient, owner): Promise<OwnedBlob[]>`**
 
-Enumerate all Walrus blobs owned by an address (resolves the Blob struct type dynamically, so no package addresses are hardcoded). Returns `{ objectId, blobId, size, endEpoch, certified }` entries.
+Enumerate all Walrus blobs owned by an address (resolves the Blob struct type dynamically, so no package addresses are hardcoded). Returns `{ objectId, blobId, size, startEpoch, endEpoch, certified, deletable }` entries (`deletable` says whether the owner can delete the blob before expiry; blobs are registered permanent by default).
 
 ### NFT-gated relay access
 
@@ -227,7 +227,7 @@ const { blobId, url } = await runBlobUpload({
   - Its digest is persisted (`{ digest, nftId, savedAt }`) before the upload and reused after an
     interruption, but only if it is well-formed, for this pass and under 4 days old; anything else is dropped.
   - It is cleared once the upload lands.
-  - A `409 redeemed` spends one new use and retries the upload on the same registration; a resumed
+  - A `409 redeemed` (recognised by the gateway's `code`, never by message text) spends one new use and retries the upload on the same registration; a resumed
     consume the gateway rejects (403) is dropped and consumed anew once.
 - **Inputs are validated before any wallet prompt:** `epochs` is an integer from 1 to the network's
   `max_epochs_ahead` (53 fallback), and `uploadRelayMaxTipMist` a positive safe integer.
@@ -303,7 +303,7 @@ Network endpoints are defined in `src/client.ts` and exported as `DEFAULT_RPC_UR
 const client = createWalrusClient({ network: 'testnet', disableUploadRelay: true })
 ```
 
-`disableUploadRelay` overrides both an explicit `uploadRelayHost` and the default fallback. To point at a public Mysten relay instead, use `PUBLIC_UPLOAD_RELAY_HOSTS[network]` as the `uploadRelayHost`.
+`uploadRelayHost` must be `https` (plain `http` is accepted only for `localhost`, `127.0.0.1` and `[::1]`), with or without an auth token; `storageNodeUrlScheme: 'http'` is accepted only for the `localnet` network. `disableUploadRelay` overrides both an explicit `uploadRelayHost` and the default fallback. To point at a public Mysten relay instead, use `PUBLIC_UPLOAD_RELAY_HOSTS[network]` as the `uploadRelayHost`.
 
 ## Testing
 

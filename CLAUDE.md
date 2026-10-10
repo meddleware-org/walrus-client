@@ -2,15 +2,18 @@
 
 ## Invariants
 
-- **No build step.** The package ships TypeScript source directly. Entry points:
+- **No JavaScript build step: the package ships TypeScript source, plus generated declarations.**
+  Entry points (each has a `types` condition pointing at `dist/<name>.d.ts` and a `default` pointing
+  at the source):
   - `"."` → `src/index.ts`, browser-safe;
   - `"./flow"` → `src/flow.ts`, the upload orchestrator, lazy about wasm;
   - `"./http"` → `src/http.ts`, publisher and aggregator over plain `fetch`;
   - `"./node"` → `src/node.ts`, Node.js only (filesystem utilities).
 
-  Vite apps resolve the source through their own bundler. Do not add a `build` script or `dist/`
-  output. Node.js-only imports must use `@meddleware/walrus-client/node`, to avoid warnings about
-  Node-only modules in browser bundles.
+  Vite apps resolve the source through their own bundler. The only build output is `dist/*.d.ts`
+  (`npm run build`, declarations only, like the sibling SDK packages; `prepublishOnly` runs it). Do
+  not emit JavaScript into `dist/`. Node.js-only imports must use `@meddleware/walrus-client/node`, to
+  avoid warnings about Node-only modules in browser bundles. `engines.node` is `>=24` (fleet decision).
 - **No hardcoded package addresses.** Walrus object type resolution must remain dynamic (see `query.ts`). Never introduce hardcoded Walrus package IDs — they differ between testnet and mainnet.
 - **`disableUploadRelay` is a safety valve, not the default.** The relay is required for browser uploads. Direct-to-storage-node only works from Node.js (or when the relay is explicitly unavailable). Default relay fallback must remain `PUBLIC_UPLOAD_RELAY_HOSTS[network]` (Mysten public relay — correct for any operator; operators with their own relay pass `uploadRelayHost` explicitly).
 - **`rpcUrl` overrides `DEFAULT_RPC_URLS`, never removes them.** The default URLs must always be present so the client works out-of-the-box without configuration.
@@ -24,7 +27,8 @@
     the upload lands;
   - mint the signed token AFTER register, right before each upload attempt;
   - retry a failed upload on the same registration within `REGISTRATION_FRESH_MS`, bounded by
-    `UPLOAD_ATTEMPTS`, with a fresh token each time; re-consume only on `isRedeemedConflict` (or a
+    `UPLOAD_ATTEMPTS`, with a fresh token each time; re-consume only on `isRedeemedConflict` (a 409 whose body carries `code: 'redeemed'`, read through
+    nft-gate-client's `GATEWAY_STATUS` / `parseGatewayError`; message text is never matched) (or a
     rejected resumed consume, once); attach `uploadRetry` when attempts run out;
   - a certify-only failure carries a retry and never repeats the upload;
   - the existing-copy precheck runs before register.

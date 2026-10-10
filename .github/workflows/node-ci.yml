@@ -36,6 +36,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Build (declarations)
+        run: npm run build
+
   shellcheck:
     name: shellcheck (localnet harness)
     runs-on: ubuntu-latest

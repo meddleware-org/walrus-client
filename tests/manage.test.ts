@@ -9,6 +9,8 @@ import {
   readBlobAttributes,
 } from '../src/manage.js'
 
+const BLOB_TYPE = '0xd84704c17fc870b8764832c535aa6b11f21a95cd6f5bb38a9b07d2cf42220c66::blob::Blob'
+
 function fakeClient() {
   const calls: Record<string, any[]> = {}
   const record = (k: string) => (arg: any) => {
@@ -32,7 +34,10 @@ function fakeClient() {
       executeWriteBlobAttributesTransaction: vi.fn(record('executeWriteBlobAttributesTransaction')),
       writeBlobAttributesTransaction: vi.fn(record('writeBlobAttributesTransaction')),
       readBlobAttributes: vi.fn(record('readBlobAttributes')),
+      getBlobType: vi.fn(async () => BLOB_TYPE),
     },
+    // `core.getObject` answers for the Blob existence check; a test overrides it for a wrong object.
+    core: { getObject: vi.fn(async (_o: { objectId: string }) => ({ object: { type: BLOB_TYPE } })) },
   }
   return { client: client as any, calls }
 }
@@ -120,17 +125,44 @@ describe('setBlobAttributes / readBlobAttributes', () => {
 
 describe('missing-attributes handling', () => {
   const missing = Object.assign(new Error('Dynamic field not found'), { code: 'dynamicFieldNotFound' })
+  const noObject = Object.assign(new Error('Object 0xOBJ does not exist'), { code: 'notExists' })
 
-  it('readBlobAttributes returns null for a blob without a metadata field and rethrows other errors', async () => {
+  it('readBlobAttributes returns null for a Blob without a metadata field and rethrows other errors', async () => {
     const { client } = fakeClient()
     client.walrus.readBlobAttributes.mockImplementationOnce(() => {
       throw missing
     })
     expect(await readBlobAttributes(client, 'OBJ')).toBeNull()
+    // the current SDK returns null itself; the Blob is still confirmed
+    client.walrus.readBlobAttributes.mockImplementationOnce(() => null as never)
+    expect(await readBlobAttributes(client, 'OBJ')).toBeNull()
+    expect(client.core.getObject).toHaveBeenCalledTimes(2)
     client.walrus.readBlobAttributes.mockImplementationOnce(() => {
       throw new Error('rpc down')
     })
     await expect(readBlobAttributes(client, 'OBJ')).rejects.toThrow('rpc down')
+  })
+
+  it('readBlobAttributes throws for a wrong object id instead of reporting "no attributes"', async () => {
+    const { client } = fakeClient()
+    client.walrus.readBlobAttributes.mockImplementationOnce(() => null as never)
+    client.core.getObject.mockRejectedValueOnce(noObject)
+    await expect(readBlobAttributes(client, '0xOBJ')).rejects.toThrow(/no Walrus Blob object 0xOBJ/)
+
+    client.walrus.readBlobAttributes.mockImplementationOnce(() => {
+      throw missing
+    })
+    client.core.getObject.mockResolvedValueOnce({ object: { type: '0x2::coin::Coin<0x2::sui::SUI>' } })
+    await expect(readBlobAttributes(client, '0xCOIN')).rejects.toThrow(/not a Walrus Blob/)
+  })
+
+  it('does not take an error for a missing field because its message says so', async () => {
+    const { client } = fakeClient()
+    client.walrus.readBlobAttributes.mockImplementationOnce(() => {
+      throw new Error('Dynamic field not found: it does not exist')
+    })
+    await expect(readBlobAttributes(client, 'OBJ')).rejects.toThrow('does not exist')
+    expect(client.core.getObject).not.toHaveBeenCalled()
   })
 
   it('setBlobAttributes retries the first write with the blob object when the field does not exist yet', async () => {
@@ -146,5 +178,24 @@ describe('missing-attributes handling', () => {
       throw new Error('boom')
     })
     await expect(setBlobAttributes(client, 'OBJ', signer, { a: 'b' })).rejects.toThrow('boom')
+  })
+
+  it('setBlobAttributes does not take the fallback path for a wrong object id', async () => {
+    const { client } = fakeClient()
+    client.walrus.executeWriteBlobAttributesTransaction.mockImplementationOnce(() => {
+      throw noObject
+    })
+    client.core.getObject.mockRejectedValueOnce(noObject)
+    await expect(setBlobAttributes(client, '0xOBJ', signer, { a: 'b' })).rejects.toThrow(/no Walrus Blob object/)
+    expect(client.walrus.executeWriteBlobAttributesTransaction).toHaveBeenCalledTimes(1)
+  })
+
+  it('setBlobAttributes does not take the fallback path because of message text alone', async () => {
+    const { client } = fakeClient()
+    client.walrus.executeWriteBlobAttributesTransaction.mockImplementationOnce(() => {
+      throw new Error('Object does not exist')
+    })
+    await expect(setBlobAttributes(client, 'OBJ', signer, { a: 'b' })).rejects.toThrow('does not exist')
+    expect(client.walrus.executeWriteBlobAttributesTransaction).toHaveBeenCalledTimes(1)
   })
 })

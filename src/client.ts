@@ -135,6 +135,11 @@ export function createWalrusClient({
   // disableUploadRelay wins over both an explicit host and the default fallback.
   const defaultRelay = bundled ? PUBLIC_UPLOAD_RELAY_HOSTS[bundled] : undefined
   const relayHost = disableUploadRelay ? undefined : (uploadRelayHost ?? defaultRelay)
+  if (relayHost) assertSecureRelayHost(relayHost)
+  // Plain-http storage nodes exist only on a local testbed.
+  if (storageNodeUrlScheme === 'http' && network !== 'localnet') {
+    throw new Error("createWalrusClient: storageNodeUrlScheme 'http' is accepted only for the 'localnet' network.")
+  }
   // The walrus() extension only accepts a Sui client whose network is 'mainnet' | 'testnet' (it throws
   // "Walrus client only supports mainnet and testnet" otherwise). For localnet we label the gRPC
   // client 'testnet' — harmless, since the real contract ids come from walrusPackageConfig and the RPC
@@ -192,18 +197,42 @@ export function relayAuthFetch(
 ): (url: RequestInfo | URL, init?: RequestInit) => Promise<Response> {
   const relayOrigin = new URL(relayHost).origin
   return (url, init) => {
-    const href =
-      typeof url === 'string' ? url : url instanceof URL ? url.href : (url as Request).url
+    const request = url instanceof Request ? url : undefined
+    const href = typeof url === 'string' ? url : url instanceof URL ? url.href : (url as Request).url
     const target = new URL(href)
     const value = typeof token === 'function' ? token() : token
     if (!value || target.origin !== relayOrigin) return globalThis.fetch(url, init)
-    const local =
-      target.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname)
-    if (target.protocol !== 'https:' && !local) {
+    if (target.protocol !== 'https:' && !isLoopbackHost(target.hostname)) {
       throw new Error(`walrus-client: refusing to send auth token over non-https URL (${href})`)
     }
-    const headers = new Headers(init?.headers)
+    // A Request keeps its own headers (init.headers, when given, adds to or overrides them), so
+    // passing `headers` below never drops what the caller built the Request with.
+    const headers = new Headers(request?.headers)
+    new Headers(init?.headers).forEach((v, k) => headers.set(k, v))
     headers.set('Authorization', `Bearer ${value}`)
-    return globalThis.fetch(url, { ...init, headers })
+    // The token must never follow a redirect to another origin: fail closed instead.
+    return globalThis.fetch(url, { ...init, headers, redirect: 'error' })
+  }
+}
+
+/** True for a hostname that only this machine can reach (the one place plain http is acceptable). */
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+}
+
+/**
+ * Refuse an upload relay that is not https, unless it is on this machine: the relay receives the
+ * blob and the signed tip transaction, which must not cross a network in the clear. Applies whether
+ * or not an auth token is configured.
+ */
+function assertSecureRelayHost(relayHost: string): void {
+  let url: URL
+  try {
+    url = new URL(relayHost)
+  } catch {
+    throw new Error('createWalrusClient: uploadRelayHost is not a valid URL.')
+  }
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopbackHost(url.hostname))) {
+    throw new Error('createWalrusClient: uploadRelayHost must be https (plain http is accepted only for localhost).')
   }
 }

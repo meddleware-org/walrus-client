@@ -6,7 +6,9 @@
 # generated/client_config.yaml (which carries a `localnet` context) and select it with --context.
 services:
   walrus-upload-relay:
-    image: mysten/walrus-upload-relay:${WALRUS_RELAY_TAG:-testnet}
+    # Pinned by digest (the `testnet` tag floats; this is testnet-v1.58.1, the image the last green
+    # nightly ran). Override the whole reference with WALRUS_RELAY_IMAGE.
+    image: ${WALRUS_RELAY_IMAGE:-mysten/walrus-upload-relay:testnet-v1.58.1@sha256:f8d3a10539b9796faee14e374fc769ee83f98e5b0f010829ff695c49567a5157}
     # Join the testbed's compose network so `sui-localnet` / storage-node hostnames resolve.
     # NOTE: the external network name must match the upstream local-testbed project network;
     # up.sh discovers it and exports LOCAL_TESTBED_NETWORK before invoking compose.
@@ -34,7 +36,7 @@ services:
   # /v1/blobs/<id> on the host at 57392. Uses the same version-matched image as the testbed nodes so
   # its reconstruction logic matches theirs.
   walrus-aggregator:
-    image: ${WALRUS_IMAGE_NAME:-mysten/walrus-service:testnet-v1.55.2}
+    image: ${WALRUS_IMAGE_NAME:-mysten/walrus-service:testnet-v1.56.0@sha256:d4bf4edce809458ffc2333dec1d1202730674d71bd044248c5a2c0c35ffd9d27}
     networks:
       - testbed
     ports:
