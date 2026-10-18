@@ -30,23 +30,31 @@ container image), PROXY, GO, RUST, SITE, PLATFORM.
 
 **Deployment status:**
 
-- npm `@meddleware/walrus-client` **0.0.27** (2026-10-09), published from tag `v0.0.27` = `83521fc`,
-  which is HEAD of `main`. It carries an SLSA v1 provenance attestation (checked on the registry
-  2026-10-09). `main` holds no unreleased code change.
-- Consumed at `^0.0.27` by walrus-ui, walrus-relay, token-deployer-ui and seal-ui (`./http`), and at
-  `^0.0.26` by the docs site (which does not list owned blobs, so it is not affected by F23).
-- Depends on `@meddleware/nft-gate-client` `^0.0.16` in 0.0.27 (audience-bound `nft-gate:access:v2` proofs).
-- **0.0.28 (2026-10-10, commit `cdafcd3`, not yet tagged)** carries the fix wave: `^0.0.17` of nft-gate-client
+- npm `@meddleware/walrus-client` **0.0.28** (`latest`), released 2026-10-10 (published 2026-10-10T19:25Z) from
+  tag `v0.0.28` = `7a26fd7` (code commit `cdafcd3`; the later commit only records the hash in this audit). It
+  carries an SLSA v1 provenance attestation (`dist.attestations`, checked on the registry 2026-10-18). 0.0.27
+  (2026-10-09, tag `v0.0.27` = `83521fc`) was the version of the 2026-10-09 pass.
+- Consumed at `^0.0.28` (verified 2026-10-18 in `repos/*/package.json`) by walrus-ui, walrus-relay,
+  token-deployer-ui and seal-ui (`./http`), the docs site and the dev site. On 2026-10-09 the first four were on
+  `^0.0.27` and docs on `^0.0.26`.
+- Depends on `@meddleware/nft-gate-client` `^0.0.17` in 0.0.28 (`^0.0.16` in 0.0.27; audience-bound
+  `nft-gate:access:v2` proofs).
+- **0.0.28 (2026-10-10, commit `cdafcd3`)** carries the fix wave: `^0.0.17` of nft-gate-client
   with the shared conflict vocabulary (F15 conflict handling, below), shipped declarations and packaging
   (F18), the Info hardening (F14, F15 attributes, F16), the localnet harness pins (F17) and the localnet
   release gate and alert (F24).
+- **Localnet gate on the release (2026-10-10):** the new `localnet-gate` job passed on the `v0.0.28` publish run
+  (38079631377, "Localnet suite is not red": success), backed by a green `Integration (localnet)` run (38079428163,
+  `workflow_dispatch` on `7a26fd7`, the release commit; the localnet suite job passed in 2m16s). The scheduled
+  nightly runs of 2026-10-15 to 2026-10-18 are green too.
 - The live gated path is walrus-ui and token-deployer-ui → `runBlobUpload` + `createGatedAccess` →
   nft-gate Workers gateway → operator relay (testnet). Operator-relay paywall e2e PASSED 2026-10-09
   against the live dashboard: a pass was bought on gate `0x316f1bf9…`, consumed, an
   `nft-gate:access:v2` proof was signed, and the upload went through the Worker.
-- The localnet integration suite PASSED again on 2026-10-09 after the 0.0.27 fix.
+- The localnet integration suite PASSED again on 2026-10-09 after the 0.0.27 fix, and on the 0.0.28 release commit
+  on 2026-10-10 (run 38079428163).
 
-**Review date:** 2026-10-03, re-verified 2026-10-09, fix wave 2026-10-10
+**Review date:** 2026-10-03, re-verified 2026-10-09, fix wave 2026-10-10, release status 2026-10-18
 **Reviewer:** Internal review
 **Severity ceiling:** High.
 
@@ -57,7 +65,7 @@ container image), PROXY, GO, RUST, SITE, PLATFORM.
 - Realised ceiling at the first pass: **Medium** (F7). Realised ceiling now: nothing open above Info
   (F7 and F23 are RESOLVED).
 
-**Status:** re-verified 2026-10-09 (first in-repo pass 2026-10-03); fix wave applied 2026-10-10 (0.0.28, commit `cdafcd3`).
+**Status:** re-verified 2026-10-09 (first in-repo pass 2026-10-03); fix wave applied 2026-10-10 (0.0.28, commit `cdafcd3`), released the same day with a green localnet gate and consumed at `^0.0.28` (2026-10-18).
 
 **Finding IDs.** The tests cite three findings of an earlier workspace-corpus audit ("walrus-audit"):
 
@@ -192,8 +200,9 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
   and `npm audit --audit-level=high` (0) clean; `npm ls --all` passes; shellcheck 0.11.0 clean over the
   harness scripts; `npm pack --dry-run` 25 files with `SECURITY.md` and the declarations;
 - the localnet integration suite was **not run** in the fix wave (Docker needs `sudo` here and the disk is
-  full), so the harness pins (F17) and the new integration assertions are unproven until a nightly or a
-  dispatched run passes on the release commit;
+  full), so the harness pins (F17) and the new integration assertions were unproven until a nightly or a
+  dispatched run passed on the release commit. **It did: run 38079428163, 2026-10-10, on the release commit
+  `7a26fd7`** (see Deployment status);
 - coverage not re-measured (the coverage plugin is not installed), so the 2026-10-03 figures are
   historical.
 
@@ -201,8 +210,8 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
 
 | Disposition | Findings |
 | --- | --- |
-| RESOLVED | F2, F4, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F18, F23, F24 |
-| MITIGATED | F13, F17 (pins done, not yet exercised by a localnet run; key: ACCEPTED-RISK) |
+| RESOLVED | F2, F4, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F17, F18, F23, F24 |
+| MITIGATED | F13 |
 | ADJUDICATED | F19 |
 | ACCEPTED-RISK | none open (F11 aggregator trust and the F17 committed key are documented accepted parts of resolved or mitigated findings) |
 | DEFERRED | none |
@@ -223,7 +232,8 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
    scheme checks, header merge and no redirects, code-only attribute errors with a Blob check,
    `deletable` and `startEpoch` in listings), the conflict vocabulary of nft-gate-client 0.0.17,
    F24 (alert issue on a red nightly and a release gate on the localnet run) and the F17 pins. Open
-   after it: F13 item 2 (a tipped, gated localnet relay) and the F17 proof run; nothing above Info.
+   after it: F13 item 2 (a tipped, gated localnet relay); the F17 proof run was done on 2026-10-10 (green on the
+   release commit, F17 RESOLVED); nothing above Info.
 
 ---
 
@@ -328,10 +338,10 @@ Critical / High / Medium / Low / Info / Positive (unchanged across the corpus).
 | `npm audit --audit-level=high` | 0 vulnerabilities |
 | `npm ls --all` | exit 0 (sui 2.35.0 and walrus 1.2.34 satisfy the declared peers). 2026-10-03: `ELSPROBLEMS`, `@mysten/sui@2.33.1` invalid (F9) |
 | `npm pack --dry-run` | 2026-10-10 (0.0.28 tree): 25 files, 37.7 kB (`src/**`, `dist/*.d.ts`, `SECURITY.md`, `CHANGELOG.md`, `README.md`, `LICENSE`, `package.json`); no `localnet/`. 2026-10-09 (0.0.27): 14 files, no `SECURITY.md`, no declarations (F18). |
-| `npm view @meddleware/walrus-client` | latest 0.0.27; SLSA v1 provenance attestation present on 0.0.27 |
+| `npm view @meddleware/walrus-client` | latest 0.0.27; SLSA v1 provenance attestation present on 0.0.27 (2026-10-18: `latest` is 0.0.28, published 2026-10-10T19:25Z, attestation present) |
 | `shellcheck -x -P SCRIPTDIR localnet/scripts/*.sh localnet/files/*.sh` | 2026-10-10: clean (0.11.0, fetched through npm for this pass). Still a Node CI job. |
 | `npx vitest run --coverage` | not re-measured (plugin not installed). 2026-10-03 (historical): 90.36% statements / 85.01% branches / 86.79% functions / 93.18% lines; `manage.ts` 45.83%, `upload.ts` 73.33%. 0.0.26 added tests for exactly those gaps (F13) |
-| `npm run test:integration` (localnet testbed) | **not run here** (no Docker access without `sudo`; disk full on 2026-10-10). Maintainer run log: red from 2026-10-02 (F23), **PASS again on 2026-10-09** after the 0.0.27 fix |
+| `npm run test:integration` (localnet testbed) | **not run here** (no Docker access without `sudo`; disk full on 2026-10-10). Maintainer run log: red from 2026-10-02 (F23), **PASS again on 2026-10-09** after the 0.0.27 fix; **PASS on the 0.0.28 release commit `7a26fd7`, 2026-10-10, run 38079428163** (dispatched by the maintainer) |
 
 The working tree was not modified by this pass beyond this file (`docs/` is untracked in the repo).
 
@@ -740,7 +750,7 @@ optionally `startEpoch`.
 
 ### F17 — Localnet harness and integration CI pinning; committed deployer key
 
-**Severity:** Info   **Disposition:** MITIGATED (pinned in 0.0.28, commit `cdafcd3`; not yet exercised by a localnet run); committed key ACCEPTED-RISK, documented
+**Severity:** Info   **Disposition:** RESOLVED (pinned in 0.0.28, commit `cdafcd3`; exercised by a green localnet run on the release commit, 2026-10-10, run 38079428163; was MITIGATED); committed key ACCEPTED-RISK, documented
 **Where:** `.github/workflows/integration.yml`, `localnet/scripts/lib.sh`, `localnet/relay.compose.yml`,
 `localnet/README.md`.
 
@@ -775,7 +785,7 @@ Still open after 2026-10-09 (accepted at the time for an ephemeral localnet-only
 - The `sudo` fallbacks are opt-in: `lib.sh` stops with guidance when the Docker daemon is unreachable unless `MW_ALLOW_SUDO=1`, and the two `sudo rm -rf` clean-ups (`bootstrap-localnet.sh`, `down.sh`) follow the same switch.
 - `localnet/README.md` and the `up.sh` message name the real refs and the pin table; the stale `v1.53.0` / `v1.55.2` mentions are gone.
 
-Checks run: `bash -n` and shellcheck 0.11.0 clean; `lib.sh` evaluated with a stub `docker` for the default and non-default tag cases and with an unreachable daemon (it stops with the guidance). **Not run:** the localnet suite itself (no Docker access here), so the dispositions stay MITIGATED until a dispatched or nightly run is green on the release commit (the new release gate, F24, requires one). The committed deployer key (`lib.sh`) remains documented as public and localnet-only (ACCEPTED-RISK).
+Checks run: `bash -n` and shellcheck 0.11.0 clean; `lib.sh` evaluated with a stub `docker` for the default and non-default tag cases and with an unreachable daemon (it stops with the guidance). **Not run:** the localnet suite itself (no Docker access here), so the disposition stayed MITIGATED until a dispatched or nightly run was green on the release commit (the new release gate, F24, requires one). **Closed 2026-10-18:** the maintainer's `Integration (localnet)` run 38079428163 (`workflow_dispatch` on `7a26fd7` = tag `v0.0.28`, 2026-10-10) is green, so the pins (`npm ci`, the pinned Walrus checkout, the digest-pinned images, the `access-gate-sui` ref) are proven by a run, and the nightly runs of 2026-10-15 to 2026-10-18 are green as well; F17 is RESOLVED. The committed deployer key (`lib.sh`) remains documented as public and localnet-only (ACCEPTED-RISK).
 
 ### F18 — Packaging, CI and documentation drift
 
@@ -871,7 +881,7 @@ a gateway endpoint that accepts the original nonce, and this module changes with
   - a streamed read cap that does not trust `Content-Length`, a 64 KiB cap on publisher responses,
     and refused redirects (asserted).
 - **No hardcoded Walrus package IDs.** localnet configuration is caller-supplied.
-- **Release chain:** SHA-pinned actions; least privilege; OIDC `--provenance` (verified for 0.0.27 on the registry, 2026-10-09; a localnet gate since 0.0.28, F24);
+- **Release chain:** SHA-pinned actions; least privilege; OIDC `--provenance` (verified for 0.0.27 on the registry, 2026-10-09, and for 0.0.28, 2026-10-18; a localnet gate since 0.0.28, F24, passed on the 0.0.28 tag);
   tag == version; idempotent publish; shellcheck in CI; `npm audit` gates.
 
 ### F23 — `fetchOwnedWalrusBlobs` listed no blobs on a live network in 0.0.23–0.0.26
@@ -918,7 +928,7 @@ and delivery did not.
 - **Release gate:** the publish workflow's new `localnet-gate` job (`actions: read`) feeds `gh run list --workflow integration.yml --branch main --status completed` to `.github/localnet-gate.mjs`, and `publish-npm` needs it. A tag is refused when the newest passed-or-failed run on main is red, when none exists, or when the newest green one is older than 72 hours (GitHub pauses schedules on idle repositories, so an old green run must not vouch forever). If a run exists for the tagged commit itself (dispatch the workflow on it for the strict form), that run's verdict is used alone.
 - **Verify job:** now type-check, lint, unit tests, build, audit and `npm ls --all`, with no `--if-present` (F18).
 - Tests: `tests/localnet-gate.test.ts` drives the script through its CLI (green; red; cancelled and skipped ignored; no run; stale; exact-commit verdicts; malformed input). The script was also run against the live `gh run list` output for this repository on 2026-10-10 (verdict: green on main, no run for the tagged commit).
-- **Not exercised until the next tag and nightly:** the workflow wiring itself (YAML parses; no Actions run was possible from here). To release right after a fix, dispatch "Integration (localnet)" and wait for it to pass; this is stated in the workflow, `AGENTS.md` and the issue text.
+- **Not exercised until the next tag and nightly** *(exercised on the `v0.0.28` tag, 2026-10-10: the publish run 38079631377 ran the `localnet-gate` job, "Localnet suite is not red", green, beside Verify and the npm publish; the alert job runs only on schedule and has had no red streak to report)*: the workflow wiring itself (YAML parses; no Actions run was possible from here). To release right after a fix, dispatch "Integration (localnet)" and wait for it to pass; this is stated in the workflow, `AGENTS.md` and the issue text.
 - Residual (accepted by design): the run the gate sees is for a commit on main, not necessarily the tagged one, unless the maintainer dispatches on it; it takes a red run to block, and 72 hours bounds how old a green one may be.
 
 ---
@@ -1009,14 +1019,14 @@ range on the first-party dependency resolves to exactly `0.0.17`, as the version
 | --- | --- | --- |
 | Actions pinned | Yes | SHA pins in all three workflows |
 | Least privilege | Yes | `contents: read`; `id-token: write` only on `publish-npm`; `issues: write` only on the alert job; `actions: read` only on the gate |
-| OIDC trusted publishing | Yes | 0.0.27 attestation (registry, 2026-10-09); npm client pinned `11.20.0` |
+| OIDC trusted publishing | Yes | 0.0.27 and 0.0.28 attestations (registry, 2026-10-09 and 2026-10-18); npm client pinned `11.20.0` |
 | Tag-gated, idempotent publish | Yes | `v*`; tag == version |
 | `npm ci` everywhere | Yes | `integration.yml` uses `npm ci` since 0.0.28 (F17) |
 | Publish verification | Yes | audit, `npm ls --all`, type-check, lint, unit tests and a real build with no `--if-present` (F18); the localnet gate must also pass (F24) |
 | Dependency tree check | Yes | `npm ls --all` in Node CI and the publish `verify` job (F9) |
 | Dependabot | Yes | weekly grouped npm and actions updates (`5175f2c`) |
 | Real funds manual-only | N/A | localnet only |
-| Third-party refs pinned | Yes (untested by a run) | suiup and the sui binary sha256-pinned (`b3e4715`); `access-gate-sui`, the Walrus checkout and the images pinned by commit or digest in 0.0.28 (F17) |
+| Third-party refs pinned | Yes (exercised by the green localnet run of 2026-10-10) | suiup and the sui binary sha256-pinned (`b3e4715`); `access-gate-sui`, the Walrus checkout and the images pinned by commit or digest in 0.0.28 (F17) |
 
 ### B.OPS-1 Runbook linkage
 
@@ -1091,7 +1101,7 @@ historical until a maintainer re-runs `vitest --coverage`.
 - [x] deletable default stated (README, CLAUDE.md, `SECURITY.md`) — F12
 - [x] Blob ownership stated per path in `SECURITY.md` — F11, F12, `d1bb9cc`
 - [x] localnet CLI aligned and checksum-pinned (sui 1.81.0, suiup) — F17, `b3e4715`
-- [x] localnet harness pins (SHA for the upstream checkout, image digests, `npm ci`, `access-gate-sui` ref, opt-in `sudo`) — F17, 0.0.28 (commit `cdafcd3`); shellcheck clean, **not yet exercised by a localnet run** (F17 stays MITIGATED until one is green on the release commit)
+- [x] localnet harness pins (SHA for the upstream checkout, image digests, `npm ci`, `access-gate-sui` ref, opt-in `sudo`) — F17, 0.0.28 (commit `cdafcd3`); shellcheck clean; **exercised by a green localnet run on the release commit** (run 38079428163, 2026-10-10; F17 RESOLVED 2026-10-18)
 - [x] hermetic regression for the F23 listing bug (u256 blob ids) — `83521fc`
 
 ### pre-mainnet
@@ -1109,9 +1119,9 @@ historical until a maintainer re-runs `vitest --coverage`.
 
 ## Cross-project themes
 
-- **Supply chain & release integrity:** SHA-pinned actions; OIDC provenance (verified for 0.0.27);
+- **Supply chain & release integrity:** SHA-pinned actions; OIDC provenance (verified for 0.0.27 and 0.0.28);
   peer ranges declared and checked by `npm ls --all` in CI and publish (F9, resolved); weekly grouped
-  Dependabot. Since 0.0.28 the integration harness is pinned by commit and digest (F17, awaiting a green run) and a red localnet run blocks a release and opens an issue (F24).
+  Dependabot. Since 0.0.28 the integration harness is pinned by commit and digest (F17, proven by the green run of 2026-10-10) and a red localnet run blocks a release and opens an issue (F24).
 - **Wire-format coupling:** the access proof is shared with both nft-gate gateways (nft-gate-client
   vectors; `nft-gate:access:v2`, audience-bound), and the `409 redeemed` / `leased` / consume-403 contract
   with the Workers gateway. The tip transaction is
@@ -1127,7 +1137,7 @@ historical until a maintainer re-runs `vitest --coverage`.
   - The SDK version is the coupling, so peer correctness (F9, resolved) is load-bearing.
 - **Pre-v0.2 policy:** patch-only bumps until go-live, breaking changes included, with no shims. F7,
   F8, F10 and F11 changed exported shapes in 0.0.26 under it; F23 shipped as 0.0.27; consumers bumped
-  in step (docs still at `^0.0.26`). The declarations/packaging change (F18) and the Info hardening landed in 0.0.28 as patch bumps under the same policy.
+  in step (docs was still at `^0.0.26` on 2026-10-09; all six consumers are on `^0.0.28` since 2026-10-18). The declarations/packaging change (F18) and the Info hardening landed in 0.0.28 as patch bumps under the same policy.
 - **Shared with sibling audits:**
 
   | This audit | Sibling audit |
@@ -1197,7 +1207,7 @@ historical until a maintainer re-runs `vitest --coverage`.
 
 **OPS lens baseline (localnet scope):** preflight, dedicated config, `set -euo pipefail`, shellcheck
 — hold. CLI version and checksum — hold since `b3e4715` (sui 1.81.0 = `Published.toml`). Pinning
-— done in 0.0.28 (F17), not yet exercised by a run. Mainnet guard and OPS-M7/M8 (no mainnet keys, manual real-chain jobs) — N/A:
+— done in 0.0.28 (F17), exercised by the green localnet run of 2026-10-10. Mainnet guard and OPS-M7/M8 (no mainnet keys, manual real-chain jobs) — N/A:
 the harness is localnet-only and no real-chain job exists.
 
 ## Implementation suggestions (SHOULD / MAY)
@@ -1238,9 +1248,8 @@ the harness is localnet-only and no real-chain job exists.
 - **Double payment:** a reload or closed tab between register and a landed upload still orphans one
   paid, permanent registration (F7 residual). Transient failures no longer do.
 - **Silent regression:** only the nightly localnet suite can catch a live-network parsing bug such as
-  F23. Since 0.0.28 a red run opens an issue and blocks a tag (F24); the gate's wiring is first
-  exercised by the next tag, and a green run is judged for main unless one is dispatched on the tagged commit.
-- **Harness drift:** the images and checkouts are pinned since 0.0.28 (F17); a pin that was wrong would show as a red run, which now blocks the release. Moving a pin is a deliberate edit of `lib.sh` and `relay.compose.yml`.
+  F23. Since 0.0.28 a red run opens an issue and blocks a tag (F24); the gate's wiring was exercised by the `v0.0.28` tag (green), and a green run is judged for main unless one is dispatched on the tagged commit (it was, for 0.0.28).
+- **Harness drift:** the images and checkouts are pinned since 0.0.28 (F17, proven by the green run of 2026-10-10); a pin that was wrong would show as a red run, which now blocks the release. Moving a pin is a deliberate edit of `lib.sh` and `relay.compose.yml`.
 
 ---
 
@@ -1296,6 +1305,15 @@ the harness is localnet-only and no real-chain job exists.
   - **Consumers to bump** after release: walrus-ui, walrus-relay, token-deployer-ui, seal-ui and docs
     (`@meddleware/walrus-client@^0.0.28`; test fixtures that build `OwnedBlob` literals need `startEpoch`
     and `deletable`).
+- 2026-10-18 — released (0.0.28), consumers bumped (walrus-ui, walrus-relay, token-deployer-ui, seal-ui, docs, dev: all
+  `^0.0.28`). `npm view` shows `@meddleware/walrus-client` 0.0.28 as `latest`, published 2026-10-10T19:25Z, with
+  SLSA v1 provenance (`dist.attestations`); tag `v0.0.28` = `7a26fd7`. **Localnet gate:** the release passed the new
+  `localnet-gate` (publish run 38079631377 green, job "Localnet suite is not red"), against a green `Integration (localnet)`
+  run on the release commit (run 38079428163, dispatched 2026-10-10T19:20Z, success); the scheduled nightlies of
+  2026-10-15 to 2026-10-18 are green. This closes the "Not run" item of the 2026-10-10 entry: **F17 MITIGATED to
+  RESOLVED** (the pins are proven by a run; the committed localnet key stays ACCEPTED-RISK), and the wiring caveat of
+  F24 is lifted. Section D: the F17-pin box was already ticked and its "not yet exercised" note is updated; no
+  other box waited on the release. Counts: 16 RESOLVED, 1 MITIGATED (F13), 1 ADJUDICATED, 3 Positive.
 
 ## Pre-save consistency checklist (this pass)
 
