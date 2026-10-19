@@ -1314,6 +1314,8 @@ the harness is localnet-only and no real-chain job exists.
   RESOLVED** (the pins are proven by a run; the committed localnet key stays ACCEPTED-RISK), and the wiring caveat of
   F24 is lifted. Section D: the F17-pin box was already ticked and its "not yet exercised" note is updated; no
   other box waited on the release. Counts: 16 RESOLVED, 1 MITIGATED (F13), 1 ADJUDICATED, 3 Positive.
+- 2026-10-19 — dependency-bot status checked (read-only): `.github/dependabot.yml` carries the `ignore` rules and the repository has no open Dependabot pull requests (`gh pr list`, 2026-10-19). Versions, findings and gates were not re-examined in this pass.
+  - Dependabot policy encoded in .github/dependabot.yml (majors declined); open PRs merged 2026-10-19
 
 ## Pre-save consistency checklist (this pass)
 
