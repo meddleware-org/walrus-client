@@ -67,7 +67,7 @@ The suites read these (via `set -a && source .env.localnet`):
 | `WALRUS_AGGREGATOR_HOST` | aggregator for read-back |
 | `WALRUS_SYSTEM_OBJECT_ID` / `WALRUS_STAKING_POOL_ID` / `WALRUS_EXCHANGE_IDS` | harvested Walrus `packageConfig` (passed to `createWalrusClient({ walrusPackageConfig })`) |
 | `WALRUS_TEST_ADDRESS` / `WALRUS_TEST_SECRET_KEY` | funded localnet keypair (bech32 `suiprivkey…`) |
-| `ACCESS_GATE_PACKAGE_ID` / `ACCESS_GATE_ID` | localnet access_gate deployment (for the relay's gated path) |
+| `ACCESS_GATE_PACKAGE_ID` / `ACCESS_GATE_ID` / `ACCESS_GATE_PLATFORM_CONFIG_ID` | localnet access_gate deployment (for the relay's gated path and purchase-terms read) |
 
 ## How this maps onto the upstream testbed (important)
 

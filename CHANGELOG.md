@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   100 MiB upload; workspace cost model, decision D57). A relay asking more than 0.005 SUI now needs an explicit
   `uploadRelayMaxTipMist`.
 
+### Fixed
+
+- The localnet bootstrap now exports `ACCESS_GATE_PLATFORM_CONFIG_ID`; walrus-relay's purchase-terms
+  integration test read the platform config with an undefined id (red since 2026-10-19).
+
 ## [0.0.28] - 2026-10-10
 
 ### Added

@@ -293,6 +293,7 @@ AG_ENV="${AG_DIR}/.env.localnet"
 # GATE) — match those exact names.
 AG_PACKAGE_ID="$({ grep -oE 'ACCESS_GATE_PACKAGE_ID=0x[0-9a-f]+' "${AG_ENV}" || true; } | cut -d= -f2 | head -1)"
 AG_GATE_ID="$({ grep -oE 'ACCESS_GATE_GATE_ID=0x[0-9a-f]+' "${AG_ENV}" || true; } | cut -d= -f2 | head -1)"
+AG_PLATFORM_CONFIG_ID="$({ grep -oE 'ACCESS_GATE_PLATFORM_CONFIG_ID=0x[0-9a-f]+' "${AG_ENV}" || true; } | cut -d= -f2 | head -1)"
 
 # 5. Bring up our gateways (upload-relay for writes + aggregator for reads), joined to the testbed
 #    network. Best-effort and MUST NOT abort the run — .env.localnet (below) is the deliverable, and
@@ -330,6 +331,7 @@ export WALRUS_TEST_ADDRESS=${TEST_ADDR}
 export WALRUS_TEST_SECRET_KEY=${TEST_SECRET}
 export ACCESS_GATE_PACKAGE_ID=${AG_PACKAGE_ID:-}
 export ACCESS_GATE_ID=${AG_GATE_ID:-}
+export ACCESS_GATE_PLATFORM_CONFIG_ID=${AG_PLATFORM_CONFIG_ID:-}
 EOF
 
 log "wrote ${LN_ENV_FILE}"
