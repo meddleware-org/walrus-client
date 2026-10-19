@@ -84,7 +84,7 @@ const client = createWalrusClient({
   wasmUrl: '...',                 // Required for browser/Vite; ignored in Node.js
   uploadRelayHost: '...',         // Optional upload relay URL; must be https (plain http only for localhost)
   uploadRelayAuthToken: '...',    // Optional Bearer token for NFT-gated relay access
-  uploadRelayMaxTipMist: 50_000_000, // Optional tip max in MIST (default: 50_000_000 = 0.05 SUI)
+  uploadRelayMaxTipMist: 5_000_000, // Optional tip max in MIST (default: 5_000_000 = 0.005 SUI)
   disableUploadRelay: false,      // Bypass the relay entirely (direct to storage nodes)
 })
 ```

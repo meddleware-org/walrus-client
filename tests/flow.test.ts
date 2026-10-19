@@ -95,7 +95,7 @@ const baseDeps = {
   relayHost: 'https://relay.example',
   address: '0xabc',
   wasmUrl: 'wasm://bundle',
-  maxTipMist: 50_000_000,
+  maxTipMist: 5_000_000,
   epochs: 53,
   suiClient: { __sui: true } as never,
   onStatus: () => {},
@@ -218,7 +218,7 @@ describe('runBlobUpload', () => {
     const { mod } = makeModule()
     await runBlobUpload({ ...baseDeps, executor: makeExecutor(), loadWalrusClient: async () => mod })
     const opts = mod.createWalrusClient.mock.calls[0]![0] as Record<string, unknown>
-    expect(opts).toMatchObject({ network: 'testnet', wasmUrl: 'wasm://bundle', uploadRelayHost: 'https://relay.example', uploadRelayMaxTipMist: 50_000_000 })
+    expect(opts).toMatchObject({ network: 'testnet', wasmUrl: 'wasm://bundle', uploadRelayHost: 'https://relay.example', uploadRelayMaxTipMist: 5_000_000 })
     expect(opts.uploadRelayAuthToken).toBeUndefined()
   })
 })

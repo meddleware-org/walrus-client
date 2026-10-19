@@ -184,9 +184,9 @@ describe('createWalrusClient upload-relay wiring', () => {
     }
   })
 
-  it('defaults the tip ceiling to 0.05 SUI', () => {
+  it('defaults the tip ceiling to 0.005 SUI', () => {
     createWalrusClient({ network: 'testnet' })
-    expect(walrusArgs[0].uploadRelay.sendTip.max).toBe(50_000_000)
+    expect(walrusArgs[0].uploadRelay.sendTip.max).toBe(5_000_000)
   })
 
   it('F6: auth token is scoped to the relay fetch hook only — globalThis.fetch is not patched', () => {

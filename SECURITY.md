@@ -23,7 +23,7 @@ treated as high severity:
    wrapped `fetch` passed solely into the upload-relay config; it is never attached to Sui RPC,
    storage-node, or aggregator requests. (Re-verify this on every `@mysten/walrus` upgrade.)
 2. **The tip cap is enforced by `@mysten/walrus` before signing.** `uploadRelayMaxTipMist` (default
-   50,000,000 MIST = 0.05 SUI, validated as a positive safe integer) is passed to the SDK's `sendTip.max`,
+   5,000,000 MIST = 0.005 SUI, validated as a positive safe integer) is passed to the SDK's `sendTip.max`,
    which refuses a relay whose tip exceeds it. Re-verify this on every `@mysten/walrus` upgrade.
 3. **No protocol addresses are hardcoded.** `walrusPackageConfig` is caller-supplied; a caller
    `rpcUrl` selects the endpoint for the client it constructs and never mutates the default map.

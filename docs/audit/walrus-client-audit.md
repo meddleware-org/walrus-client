@@ -132,7 +132,7 @@ clients elsewhere. No JSON-RPC.
 - **Aggregators:** `https://aggregator.walrus-testnet.walrus.space` and
   `https://aggregator.walrus-mainnet.walrus.space`.
 - **Publisher:** caller-supplied (`./http`). Walrus runs no public mainnet publisher.
-- **Tip ceiling:** `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST = 50_000_000` (0.05 SUI), in `src/client.ts` (`DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST`).
+- **Tip ceiling:** `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST = 5_000_000` (0.005 SUI since 0.0.29; 0.05 SUI before), in `src/client.ts` (`DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST`).
   Callers override it with `uploadRelayMaxTipMist`. It is enforced by the SDK (`sendTip.max`).
 - **Epoch default / maximum:** 53 / 53. `epochs` is validated as an integer in `[1, max]`, where `max`
   is the live `max_epochs_ahead` read through the SDK with `MAX_SINGLE_RESERVATION_EPOCHS = 53` as the
@@ -937,7 +937,7 @@ and delivery did not.
 
 | # | Invariant | Enforced / asserted at | Proven by | Status |
 | --- | --- | --- | --- | --- |
-| I1 | **Payment bounds:** relay tip capped client-side | `sendTip.max` (SDK); `assertTipCapMist` | `defaults the tip ceiling to 0.05 SUI` (option only); `rejects NaN, zero, negatives, fractions and unsafe integers` | HOLDS (SDK-enforced; input validated — F10) |
+| I1 | **Payment bounds:** relay tip capped client-side | `sendTip.max` (SDK); `assertTipCapMist` | `defaults the tip ceiling to 0.005 SUI` (option only); `rejects NaN, zero, negatives, fractions and unsafe integers` | HOLDS (SDK-enforced; input validated — F10) |
 | I2 | **Relay authentication:** token only to the relay origin, per request, via an honoured mechanism, never over plain http, never logged | `relayAuthFetch` | F2/F4/F6 tests | HOLDS (SDK honouring proven by `relay-auth-sdk.test.ts` — F13; edge cases closed in 0.0.28: Request headers merged, redirects refused, https-only relay host — F14) |
 | I3 | **Relay selection** cannot bypass gating or commission | apps choose the host; gating is at the gateway | — | N/A here (enforced server-side; client-side choice stated in the walrus-relay audit) |
 | I4 | **Epochs ≤ `max_epochs_ahead`; deletable default stated** | defaults 53 / permanent | upload/flow tests | HOLDS — `assertEpochs` against the live maximum (53 fallback); permanent default (F10) |
@@ -998,7 +998,7 @@ range on the first-party dependency resolves to exactly `0.0.17`, as the version
 
 | Item | State |
 | --- | --- |
-| Tip ceiling | 0.05 SUI default (~8× the operator relay's worst case at 100 MiB); app-overridable |
+| Tip ceiling | 0.005 SUI default since 0.0.29 (~8× the operator relay's worst case at 100 MiB under the D57 tip); app-overridable |
 | WAL funding | the user's wallet on the relay path; the publisher's on `./http` |
 | Expiry monitoring / extension | `extendBlobLifetime*` and `estimateStorageCost` exist; monitoring is the apps' concern |
 | Mainnet relay / aggregator / publisher | public relay and aggregator defaults exist; no publisher (none public on mainnet; seal-ui requires an operator one) |
@@ -1316,6 +1316,12 @@ the harness is localnet-only and no real-chain job exists.
   other box waited on the release. Counts: 16 RESOLVED, 1 MITIGATED (F13), 1 ADJUDICATED, 3 Positive.
 - 2026-10-19 — dependency-bot status checked (read-only): `.github/dependabot.yml` carries the `ignore` rules and the repository has no open Dependabot pull requests (`gh pr list`, 2026-10-19). Versions, findings and gates were not re-examined in this pass.
   - Dependabot policy encoded in .github/dependabot.yml (majors declined); open PRs merged 2026-10-19
+- 2026-10-19 — tip ceiling re-derived from the workspace cost model (`docs/economics/COST_MODEL.md`, D57):
+  `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST` 50_000_000 → 5_000_000 (≈ 8× the 624_288 MIST worst-case tip of the
+  re-priced operator relay at 100 MiB). Version 0.0.29, commit pending; README, SECURITY.md invariant 2, CLAUDE.md,
+  AGENTS.md and the I1 / tip-ceiling rows updated (history lines left as written). Measured with Node 26.12.0:
+  type-check, lint, 128/128 unit tests and build pass; `defaults the tip ceiling to 0.005 SUI` pins the value. No
+  disposition changes.
 
 ## Pre-save consistency checklist (this pass)
 

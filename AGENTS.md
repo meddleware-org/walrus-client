@@ -60,7 +60,7 @@ walrus-client/
 | `DEFAULT_RPC_URLS` | `client.ts` | Public Mysten fullnode URLs (testnet/mainnet) |
 | `PUBLIC_UPLOAD_RELAY_HOSTS` | `client.ts` | Public Mysten upload relay hosts (default when no `uploadRelayHost` is passed) |
 | `WALRUS_AGGREGATOR_HOSTS` | `client.ts` | Public Walrus aggregator hosts |
-| `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST` | `client.ts` | 50,000,000 MIST (0.05 SUI) tip ceiling |
+| `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST` | `client.ts` | 5,000,000 MIST (0.005 SUI) tip ceiling |
 | `MAX_SINGLE_RESERVATION_EPOCHS` | `limits.ts` | 53 — Walrus `max_epochs_ahead` fallback |
 | `LONG_TERM_EPOCHS` | `upload.ts` | 200 — ~7.7 years (requires renewal) |
 

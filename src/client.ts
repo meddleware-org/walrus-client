@@ -95,7 +95,7 @@ export type CreateWalrusClientOptions = {
   uploadRelayAuthToken?: string | (() => string | undefined)
   /**
    * Maximum tip payment to the upload relay in MIST (default
-   * {@link DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST} = 0.05 SUI). The relay may request less; the SDK
+   * {@link DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST} = 0.005 SUI). The relay may request less; the SDK
    * refuses a relay whose tip exceeds this cap, so it must sit above any legitimate tip.
    */
   uploadRelayMaxTipMist?: number
@@ -176,11 +176,12 @@ export function createWalrusClient({
 }
 
 /**
- * Default client ceiling on the relay tip (MIST): 0.05 SUI, ~8× the worst-case tip of a linear
- * `1_000_000 + 10/KiB` relay at a 100 MiB upload. It bounds what a hostile relay can charge while
- * never rejecting a legitimate upload.
+ * Default client ceiling on the relay tip (MIST): 0.005 SUI, ~8× the worst-case tip of the operator's
+ * linear `100_000 + 1/KiB` relay at a 100 MiB upload (624_288 MIST). It bounds what a hostile relay
+ * can charge while never rejecting a legitimate upload. A relay with a higher tip needs a higher
+ * `uploadRelayMaxTipMist`.
  */
-export const DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST = 50_000_000
+export const DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST = 5_000_000
 
 /**
  * Build a `fetch` that adds `Authorization: Bearer <token>` to requests whose origin is the

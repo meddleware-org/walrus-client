@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.29] - 2026-10-19
+
+### Changed
+
+- `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST` is now `5_000_000` MIST (0.005 SUI), down from 0.05 SUI: about 8× the
+  worst-case tip of the operator's re-priced relay (`100_000` MIST + 1 MIST per encoded KiB, 624_288 MIST at a
+  100 MiB upload; workspace cost model, decision D57). A relay asking more than 0.005 SUI now needs an explicit
+  `uploadRelayMaxTipMist`.
+
 ## [0.0.28] - 2026-10-10
 
 ### Added
