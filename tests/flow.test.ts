@@ -392,7 +392,7 @@ describe('createGatedAccess', () => {
       signAndExecute: vi.fn(async (_tx: { nonce: string }) => ({ digest: DIGEST })),
       waitForTransaction: vi.fn(async () => {}),
       sign: vi.fn(async (_m: Uint8Array) => ({ signature: 'U0lH' })),
-      fetchChallenge: vi.fn(async () => ({ nonce: 'nonce-xyz' })),
+      fetchChallenge: vi.fn(async () => ({ nonce: 'nonce-xyz', expiresAt: Date.now() + 60_000 })),
       now: () => NOW,
     }
   }
@@ -409,6 +409,16 @@ describe('createGatedAccess', () => {
     const token = await gate.token()
     expect(p.signAndExecute).toHaveBeenCalledTimes(1) // token() reuses the prepared consume
     expect(decodeAccessProof(token)).toMatchObject({ address: '0xabc', nonce: 'nonce-xyz', signature: 'U0lH', consumeDigest: DIGEST })
+  })
+
+  it('passes the gateway challenge expiry through, and never prompts the wallet on an expired challenge', async () => {
+    // Regression: the flow once built the proof with a synthetic expiresAt of 0, which nft-gate-client 0.0.18 refuses.
+    const fresh = ports(fakeStorage(), false)
+    await expect(createGatedAccess(fresh).token()).resolves.toEqual(expect.any(String))
+    const expired = ports(fakeStorage(), false)
+    expired.fetchChallenge = vi.fn(async () => ({ nonce: 'old', expiresAt: Date.now() - 120_000 }))
+    await expect(createGatedAccess(expired).token()).rejects.toThrow(/expired/)
+    expect(expired.sign).not.toHaveBeenCalled()
   })
 
   it('signs the audience-bound message: relay origin, gate, network, nonce and the consume', async () => {

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.30] - 2026-10-22
+
+### Changed
+
+- @meddleware/nft-gate-client ^0.0.18 (exact 32-byte digest rule, challenge-expiry check before the wallet prompt); the gated flow now passes the gateway's real challenge expiry to buildAccessProof (it passed a synthetic 0, which 0.0.18 refuses)
+
 ## [0.0.29] - 2026-10-19
 
 ### Changed

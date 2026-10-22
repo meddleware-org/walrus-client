@@ -346,7 +346,7 @@ export interface GatedAccessPorts<Tx> {
   /** Wallet personal-message signer (free — no gas, no use). */
   sign: PersonalMessageSigner
   /** Challenge source (default: the relay gateway's `GET /v1/challenge`). */
-  fetchChallenge?: (relayHost: string) => Promise<{ nonce: string }>
+  fetchChallenge?: (relayHost: string) => Promise<{ nonce: string; expiresAt: number }>
   onStatus?: (p: UploadProgress) => void
   /** Clock (tests). */
   now?: () => number
@@ -427,7 +427,7 @@ export function createGatedAccess<Tx>(ports: GatedAccessPorts<Tx>): GatedAccess 
       ports.onStatus?.({ step: 'access', detail: 'Signing relay access (approve in wallet)…' })
       return buildAccessProof({
         address: ports.address,
-        challenge: { nonce: challenge.nonce, expiresAt: 0 },
+        challenge: { nonce: challenge.nonce, expiresAt: challenge.expiresAt },
         sign: ports.sign,
         gateway: ports.relayHost,
         gateId: ports.gateId,

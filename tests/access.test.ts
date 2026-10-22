@@ -49,7 +49,7 @@ describe('relay access proof', () => {
   it('createRelayAccessToken signs the message bound to the relay, gate and network', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ nonce: 'the-nonce', expiresAt: 1 }), { status: 200 })),
+      vi.fn(async () => new Response(JSON.stringify({ nonce: 'the-nonce', expiresAt: Date.now() + 60_000 }), { status: 200 })),
     )
     const sign = vi.fn(async (message: Uint8Array) => {
       expect(text(message)).toBe(
