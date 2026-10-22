@@ -52,7 +52,8 @@ container image), PROXY, GO, RUST, SITE, PLATFORM.
   against the live dashboard: a pass was bought on gate `0x316f1bf9…`, consumed, an
   `nft-gate:access:v2` proof was signed, and the upload went through the Worker.
 - The localnet integration suite PASSED again on 2026-10-09 after the 0.0.27 fix, and on the 0.0.28 release commit
-  on 2026-10-10 (run 38079428163).
+  on 2026-10-10 (run 38079428163). It was red on 2026-10-21 and 2026-10-22 (F25, a floating Sui node image) and green
+  again on 2026-10-22 after the fix (run 39766927302, commit `75cd12a`).
 
 **Review date:** 2026-10-03, re-verified 2026-10-09, fix wave 2026-10-10, release status 2026-10-18
 **Reviewer:** Internal review
@@ -206,11 +207,11 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
 - coverage not re-measured (the coverage plugin is not installed), so the 2026-10-03 figures are
   historical.
 
-**Findings by final disposition (21 findings: F2, F4, F6 and F7–F24; 18 carry a disposition, F20–F22 are Positive):**
+**Findings by final disposition (22 findings: F2, F4, F6 and F7–F25; 19 carry a disposition, F20–F22 are Positive):**
 
 | Disposition | Findings |
 | --- | --- |
-| RESOLVED | F2, F4, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F17, F18, F23, F24 |
+| RESOLVED | F2, F4, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F17, F18, F23, F24, F25 |
 | MITIGATED | F13 |
 | ADJUDICATED | F19 |
 | ACCEPTED-RISK | none open (F11 aggregator trust and the F17 committed key are documented accepted parts of resolved or mitigated findings) |
@@ -234,6 +235,10 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
    F24 (alert issue on a red nightly and a release gate on the localnet run) and the F17 pins. Open
    after it: F13 item 2 (a tipped, gated localnet relay); the F17 proof run was done on 2026-10-10 (green on the
    release commit, F17 RESOLVED); nothing above Info.
+5. **2026-10-22 (CI and test only, no version bump):** F25 (Low, new, RESOLVED). The nightly localnet suite was red
+   on 2026-10-21 and 2026-10-22 because the floating `mysten/sui-tools:mainnet` node image moved to a gRPC-only
+   build and the bootstrap's JSON-RPC WAL lookup failed silently. The node image is pinned, the lookup uses the
+   Sui CLI, and funding fails fast (commit `75cd12a`, green run 39766927302).
 
 ---
 
@@ -681,6 +686,8 @@ value it does not use.
 - **SDK honours the hook:** `tests/relay-auth-sdk.test.ts` builds the real `@mysten/walrus` client, stubs the global `fetch`, and asserts `Authorization: Bearer tok-1` on the relay request and none on any other origin. An SDK upgrade that drops `fetch` now fails CI.
 - **Coverage gaps:** `tests/manage.test.ts` covers the first-write fallback and the missing-attribute null ("setBlobAttributes retries the first write with the blob object when the field does not exist yet", "readBlobAttributes returns null for a blob without a metadata field and rethrows other errors"); `tests/upload.test.ts` covers `uploadImageBytes` and `createBlobUploadFlow`. Coverage was not re-measured (plugin not installed); unit tests went 81 to 105.
 
+*Note (2026-10-22):* the localnet WAL funding that the lifecycle suite depends on broke silently on 2026-10-21 (F25); the suite now checks its own funding before it starts, which does not change the F13 disposition.
+
 Item 2 is not done: `localnet/config/relay.yaml` is still `tip_config: !no_tip` with `tx_freshness_threshold_secs: 36000`, and `relay.compose.yml` has no gateway (both unchanged since 2026-09-30). Compensating evidence: the tipped, gated operator-relay path was exercised live on 2026-10-09 (paywall e2e through the Worker, `nft-gate:access:v2` proof, upload) and by token-deployer-ui `e2e:walrus`. The nightly localnet suite therefore still does not cover tip enforcement or the gated path, which stays recorded in C.2.
 
 ### F14 — `relayAuthFetch` and client-construction edge cases
@@ -931,6 +938,30 @@ and delivery did not.
 - **Not exercised until the next tag and nightly** *(exercised on the `v0.0.28` tag, 2026-10-10: the publish run 38079631377 ran the `localnet-gate` job, "Localnet suite is not red", green, beside Verify and the npm publish; the alert job runs only on schedule and has had no red streak to report)*: the workflow wiring itself (YAML parses; no Actions run was possible from here). To release right after a fix, dispatch "Integration (localnet)" and wait for it to pass; this is stated in the workflow, `AGENTS.md` and the issue text.
 - Residual (accepted by design): the run the gate sees is for a commit on main, not necessarily the tagged one, unless the maintainer dispatches on it; it takes a red run to block, and 72 hours bounds how old a green one may be.
 
+### F25 — The localnet testbed ran on a floating Sui node image and funded the test wallet through a silent JSON-RPC lookup
+
+**Severity:** Low   **Disposition:** RESOLVED (CI and test only, no version bump; commit `75cd12a`, 2026-10-22; proven by the green run 39766927302)
+**Where:** `localnet/scripts/bootstrap-localnet.sh` (step 3b), `localnet/scripts/lib.sh`, `localnet/testbed.override.yml`; the upstream `docker/local-testbed` compose (`image: mysten/sui-tools:mainnet`).
+
+**Issue:**
+
+- **A floating node image.** The upstream compose runs the Sui node from `mysten/sui-tools:mainnet`, a tag that moves with every mainnet release. F17 pinned the checkout, the walrus-service image and the relay image, but not this one. On 2026-10-21 the tag moved to a build that serves gRPC only (`POST /` with a JSON-RPC body answers 404; verified locally against `mainnet-v1.82.3`).
+- **A silent lookup.** Step 3b found the deploy admin's WAL coin with `curl` calls to `suix_getAllBalances` and `suix_getCoins`, each ending `|| true`. Against the new node they returned nothing, so the script printed "WAL not at admin", then "no WAL coin found anywhere in keystore", and carried on with an unfunded test wallet (a warning, exit 0). The same step has a fallback scan of the keystore addresses that read `a[0]` of the Sui CLI's `[alias, address]` pairs, so it handed back aliases (this never worked on CLI 1.8x).
+- **A far-away symptom.** The lifecycle suite then failed with `Insufficient balance of …::wal::WAL … Required: 16, Available: 0` and three follow-on failures ("uploaded blob should be owned", `TypeError: Cannot read properties of undefined (reading 'Object')`, "expected undefined to be defined") that point away from the cause.
+
+**Evidence:** nightly runs 39568220105 (2026-10-21) and 39746924799 (2026-10-22) on `9e3d204`, the same commit as the last green nightly 39391809949 (2026-10-20): the pulled `sui-tools` layer sets differ between the three runs while the walrus-service digest, the upstream checkout (`a1899b9`) and the access-gate ref are identical. Required 16 = (storage 5 × 3 epochs + write 1) × 1 unit. Reproduced on rootless podman against `mysten/sui-tools:mainnet` (1.82.3): `walrus-deploy` succeeds, the admin holds one WAL coin of 4.997996e18 FROST, `sui client balance --with-coins --json` (CLI 1.81.0) lists it over gRPC, JSON-RPC returns 404.
+
+**Impact:** the whole write-side suite was red for two nights and the `localnet-gate` would have refused a tag (it did its job). walrus-relay's integration workflow shares this harness (`repos/walrus-client` at `main`) and logged the same "no WAL coin found" warning on 2026-10-22, but stayed green because its suite makes no paid write.
+
+**Remediation / evidence (2026-10-22):**
+
+- **Pinned:** `SUI_TOOLS_IMAGE` (`mysten/sui-tools:mainnet-v1.82.3@sha256:9dbefdc0…`) in `lib.sh`, applied to `sui-localnet` by `testbed.override.yml` and written to the testbed `.env`; moving it is a deliberate edit.
+- **gRPC lookups:** `wal_largest_coin` / `wal_total` (`lib.sh`) call `sui client balance --with-coins --json`; the keystore scan takes the `0x…` element of each pair.
+- **Fail-fast funding:** every failure in step 3b (unparsable admin wallet, no key, no WAL anywhere, a coin below the floor, a failed transfer, a test address that does not end up holding the floor) is now `die` with the cause. `LN_WAL_MIN_FROST` = (storage × max epochs + write) × units × margin from the prices in `lib.sh` (2,723,840 FROST), which `files/deploy-walrus.sh` also reads (`STORAGE_PRICE` / `WRITE_PRICE`, passed by `deploy-patch.override.yml`), so the floor and the testbed cannot drift apart.
+- **Suite preflight:** `assertLocalnetWalFunded` (`tests/integration/harness.ts`, called from the lifecycle `beforeAll`) computes the WAL the suite needs from the live system object (`client.walrus.storageCost`, two 3-epoch uploads plus a 2-epoch extension, ×2 margin) and compares it with the wallet's balance of `WALRUS_WAL_COIN_TYPE` (new in `.env.localnet`). Pinned by `tests/wal-funding.test.ts` (requirement from a live price, scales with a price change, clear error when unfunded).
+- **Proof:** dispatched "Integration (localnet)" on `75cd12a`, run 39766927302: bootstrap "WAL funded: … holds 4997996000000000000 FROST (floor 2723840)", 6/6 lifecycle tests passed. The bootstrap section was also run locally against the pinned node (including the keystore-scan path). shellcheck stable clean over the harness scripts.
+- Residual: the CLI that CI installs (sui 1.81.0, checksum-pinned, F17) talks to a 1.82.3 node; both ends are pinned, so a later move is a deliberate pair of edits. The nightly alert issue (#7) closes on the next scheduled green run.
+
 ---
 
 ## Section A — Invariant verification matrix
@@ -1103,6 +1134,7 @@ historical until a maintainer re-runs `vitest --coverage`.
 - [x] localnet CLI aligned and checksum-pinned (sui 1.81.0, suiup) — F17, `b3e4715`
 - [x] localnet harness pins (SHA for the upstream checkout, image digests, `npm ci`, `access-gate-sui` ref, opt-in `sudo`) — F17, 0.0.28 (commit `cdafcd3`); shellcheck clean; **exercised by a green localnet run on the release commit** (run 38079428163, 2026-10-10; F17 RESOLVED 2026-10-18)
 - [x] hermetic regression for the F23 listing bug (u256 blob ids) — `83521fc`
+- [x] localnet Sui node image pinned by digest, WAL funding over gRPC and fail-fast, suite funding preflight — F25, commit `75cd12a`; `tests/wal-funding.test.ts`; green run 39766927302 (2026-10-22)
 
 ### pre-mainnet
 
@@ -1323,6 +1355,19 @@ the harness is localnet-only and no real-chain job exists.
   type-check, lint, 128/128 unit tests and build pass; `defaults the tip ceiling to 0.005 SUI` pins the value. No
   disposition changes.
 
+- 2026-10-22 — nightly localnet suite red on 2026-10-21 and 2026-10-22; root cause found, fixed and proven (CI and test only, no
+  version bump; commit `75cd12a`).
+  - **Cause (F25, new, RESOLVED):** the floating `mysten/sui-tools:mainnet` node image moved to a gRPC-only build; the bootstrap's
+    JSON-RPC WAL lookup failed silently and the test wallet was never funded. Same repository commit as the last green night
+    (2026-10-20); only the pulled sui-tools layers differ.
+  - **Fix:** node image pinned by digest, WAL lookups through the Sui CLI (gRPC), fail-fast funding with a floor derived from the
+    testbed prices, a suite preflight from the live storage cost, the keystore-scan alias bug fixed.
+  - **Measured:** type-check, eslint, 132/132 unit tests (11 files, `tests/wal-funding.test.ts` added); shellcheck stable clean over
+    `localnet/scripts` and `localnet/files`; dispatched `Integration (localnet)` run 39766927302 green on `75cd12a` (6/6).
+  - **Other localnet workflows:** walrus-relay's `Integration (localnet)` (same harness at `main`) was green on 2026-10-22 despite
+    the same unfunded wallet because its suite does no paid write; it picks the fix up on its next run. Alert issue #7 stays open
+    until the next scheduled green run. Counts: 17 RESOLVED, 1 MITIGATED (F13), 1 ADJUDICATED, 3 Positive.
+
 ## Pre-save consistency checklist (this pass)
 
 - [x] Section A ↔ findings: no GAP rows remain; partial row I6 cites F11; I8 cites the F7 residual.
@@ -1334,4 +1379,5 @@ the harness is localnet-only and no real-chain job exists.
 - [x] Executive summary ↔ dispositions and ceiling (nothing open above Info; first-pass ceiling Medium).
 - [x] C.1 counts: tests measured 2026-10-09; coverage percentages marked historical.
 - [x] Re-verification log entry added (2026-10-09).
+- [x] 2026-10-22: F25 added to the summary counts, Section D and the log; F13 notes the dependency.
 - [x] 2026-10-10 fix wave: dispositions, executive summary counts, Section D, OQ3 and OQ5, C.1 counts and the log updated together; unticked D items are mainnet-blocked or maintainer-only, each named.
