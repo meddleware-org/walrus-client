@@ -30,7 +30,9 @@ container image), PROXY, GO, RUST, SITE, PLATFORM.
 
 **Deployment status:**
 
-- npm `@meddleware/walrus-client` **0.0.28** (`latest`), released 2026-10-10 (published 2026-10-10T19:25Z) from
+- **2026-10-22: npm `@meddleware/walrus-client` `latest` is 0.0.30** (tag `v0.0.30` = `ed1257f`). 0.0.29 (tag `v0.0.29` = `9e3d204`, 2026-10-19) lowered `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST` to 5_000_000 and exported the localnet
+  platform-config id; 0.0.30 depends on `@meddleware/nft-gate-client` `^0.0.18` and fixes F26 (the gated flow passed a synthetic challenge expiry of 0, which 0.0.18 refuses). Consumers on `^0.0.30`: walrus-relay 0.1.33, walrus-ui 0.1.61, seal-ui 0.0.40, token-deployer-ui 0.0.38, the dashboard (0.1.88).
+- npm `@meddleware/walrus-client` **0.0.28**, released 2026-10-10 (published 2026-10-10T19:25Z) from
   tag `v0.0.28` = `7a26fd7` (code commit `cdafcd3`; the later commit only records the hash in this audit). It
   carries an SLSA v1 provenance attestation (`dist.attestations`, checked on the registry 2026-10-18). 0.0.27
   (2026-10-09, tag `v0.0.27` = `83521fc`) was the version of the 2026-10-09 pass.
@@ -207,11 +209,11 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
 - coverage not re-measured (the coverage plugin is not installed), so the 2026-10-03 figures are
   historical.
 
-**Findings by final disposition (22 findings: F2, F4, F6 and F7–F25; 19 carry a disposition, F20–F22 are Positive):**
+**Findings by final disposition (23 findings: F2, F4, F6 and F7–F26; 20 carry a disposition, F20–F22 are Positive):**
 
 | Disposition | Findings |
 | --- | --- |
-| RESOLVED | F2, F4, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F17, F18, F23, F24, F25 |
+| RESOLVED | F2, F4, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F17, F18, F23, F24, F25, F26 |
 | MITIGATED | F13 |
 | ADJUDICATED | F19 |
 | ACCEPTED-RISK | none open (F11 aggregator trust and the F17 committed key are documented accepted parts of resolved or mitigated findings) |
@@ -239,6 +241,8 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
    on 2026-10-21 and 2026-10-22 because the floating `mysten/sui-tools:mainnet` node image moved to a gRPC-only
    build and the bootstrap's JSON-RPC WAL lookup failed silently. The node image is pinned, the lookup uses the
    Sui CLI, and funding fails fast (commit `75cd12a`, green run 39766927302).
+6. **2026-10-22 (0.0.30):** F26 (Medium, new, RESOLVED). The gated flow built the access proof with a synthetic `expiresAt: 0`; `@meddleware/nft-gate-client` 0.0.18 refuses an expired challenge before the
+   wallet prompt, so the flow would have failed on every gated upload once it took 0.0.18. 0.0.30 passes the gateway's real challenge expiry (commit `ed1257f`), pinned by a regression test.
 
 ---
 
@@ -962,6 +966,20 @@ and delivery did not.
 - **Proof:** dispatched "Integration (localnet)" on `75cd12a`, run 39766927302: bootstrap "WAL funded: … holds 4997996000000000000 FROST (floor 2723840)", 6/6 lifecycle tests passed. The bootstrap section was also run locally against the pinned node (including the keystore-scan path). shellcheck stable clean over the harness scripts.
 - Residual: the CLI that CI installs (sui 1.81.0, checksum-pinned, F17) talks to a 1.82.3 node; both ends are pinned, so a later move is a deliberate pair of edits. The nightly alert issue (#7) closes on the next scheduled green run.
 
+### F26 — The gated flow built the access proof with a synthetic challenge expiry of 0
+
+**Severity:** Medium   **Disposition:** RESOLVED (0.0.30, `ed1257f`, 2026-10-22; pinned by `tests/flow.test.ts`)
+**Where:** `src/flow.ts` (`GatedAccessPorts.fetchChallenge`, `createGatedAccess`).
+
+**Issue:** `createGatedAccess` called `buildAccessProof({ challenge: { nonce, expiresAt: 0 }, … })`: it kept only the nonce of the gateway's challenge and invented an expiry of 0. `@meddleware/nft-gate-client` 0.0.18 (F14 of that audit)
+checks the address and the challenge expiry before it asks the wallet to sign, and refuses an expired challenge. With the synthetic 0, every gated upload would fail at the proof step after the dependency moved to 0.0.18.
+
+**Impact:** no funds at risk (the check fails before the wallet prompt and before any consume is wasted on the proof), but the paywalled upload path of every consumer (walrus-ui, token-deployer-ui, the relay UI, seal-ui) would have been unusable on
+the dependency bump; the nightly localnet harness exercises the flow and would have been red. Found while moving the package to 0.0.18 (0.0.29 and earlier depended on the 0.0.17 client, which has no expiry check, so no released version of this package combined the two).
+
+**Remediation / evidence:** `fetchChallenge` is typed `{ nonce: string; expiresAt: number }` and the flow passes `challenge.expiresAt` through unchanged. Test: `tests/flow.test.ts` "passes the gateway challenge expiry through, and never prompts the wallet on an expired
+challenge" (a fresh challenge yields a token; an expired one rejects with /expired/ and `sign` is never called). The localnet nightly harness was fixed the same day for an unrelated cause (F25). Released as 0.0.30 with `nft-gate-client` `^0.0.18`.
+
 ---
 
 ## Section A — Invariant verification matrix
@@ -1140,7 +1158,7 @@ historical until a maintainer re-runs `vitest --coverage`.
 
 - [ ] mainnet relay, aggregator and publisher choices confirmed (no public mainnet publisher) — apps; maintainer-only
 - [ ] tip ceiling, WAL funding and expiry plan decided — apps (B.WAL-2); maintainer-only
-- [ ] read integrity for content the apps depend on — F11 (aggregator trust documented; the apps decide whether to verify); maintainer-only
+- [x] read integrity for content the apps depend on — F11, OQ4. **Decided 2026-10-22:** the SDK does not verify aggregator bytes; AEAD covers sealed (Seal) content, and anything else that needs integrity re-derives the blob id (or checks a hash recorded elsewhere) before trusting the bytes. Aggregator trust stays documented (`SECURITY.md`)
 - [x] SDK-honours-`fetch` regression test in CI — `relay-auth-sdk.test.ts`, F13
 - [x] packaging refresh: `.d.ts` (D34), `SECURITY.md` in `files`, lint and no `--if-present` in publish, `engines`, `AGENTS.md` — F18, 0.0.28 (commit `cdafcd3`); `tests/package.test.ts`
 - [x] Info hardening: `relayAuthFetch` edge cases (F14), attribute-error classification (F15), `deletable` in listings (F16) — 0.0.28 (commit `cdafcd3`); `tests/client.test.ts`, `tests/manage.test.ts`, `tests/query.test.ts`
@@ -1264,7 +1282,7 @@ the harness is localnet-only and no real-chain job exists.
   access-gate-client: fleet decision D34 says every SDK package does, and the pre-v0.2 policy allows
   it in a patch.
 - **OQ4** *(DECIDED 2026-10-08, 0.0.26)* `./http` does not offer a verified read; `SECURITY.md` and the
-  `readBlob` doc state the aggregator trust (F11).
+  `readBlob` doc state the aggregator trust (F11). *(Confirmed 2026-10-22 as the apps' policy: no verification of aggregator bytes in the SDK; AEAD covers sealed content; anything needing integrity re-derives the blob id.)*
 - **OQ5** *(DECIDED 2026-10-10, 0.0.28; F24)* The nightly localnet result alerts (an issue per red
   streak) and gates a release (`localnet-gate`: newest run on main not red and under 72 hours old, or
   the tagged commit's own run). Running the whole suite inside `verify` was rejected: it needs Docker
@@ -1368,6 +1386,13 @@ the harness is localnet-only and no real-chain job exists.
     the same unfunded wallet because its suite does no paid write; it picks the fix up on its next run. Alert issue #7 stays open
     until the next scheduled green run. Counts: 17 RESOLVED, 1 MITIGATED (F13), 1 ADJUDICATED, 3 Positive.
 
+- 2026-10-22 (audit close-out, 0.0.30) — release status, a new finding and the read-integrity decision.
+  - **Releases:** 0.0.29 (`v0.0.29` = `9e3d204`) and 0.0.30 (`v0.0.30` = `ed1257f`) are released; npm `latest` is 0.0.30. 0.0.29 carries the lower tip ceiling (5_000_000 MIST, cost model D57) and the localnet platform-config id export; its earlier "commit pending" is now the tag.
+  - **F26 (new, Medium, RESOLVED):** the gated flow passed a synthetic `expiresAt: 0` to `buildAccessProof`; `nft-gate-client` 0.0.18 refuses an expired challenge before the wallet prompt (nft-gate-client F14), so every gated upload would have failed on the dependency bump.
+    0.0.30 passes the gateway's real expiry; regression test in `tests/flow.test.ts`. The localnet nightly harness was fixed the same day (F25, already recorded). Counts: **18 RESOLVED, 1 MITIGATED (F13), 1 ADJUDICATED, 3 Positive** (23 findings).
+  - **Decided 2026-10-22:** F11 / OQ4 — no verification of aggregator bytes in the SDK: AEAD covers sealed content, and anything needing integrity re-derives the blob id. Section D box "read integrity for content the apps depend on" ticked. The mainnet relay/aggregator/publisher and tip/WAL/expiry boxes stay open (maintainer-only, mainnet).
+  - Verified: npm `latest` of this package and of `nft-gate-client` read with `npm view` (0.0.30, 0.0.18); tags read with git. Not re-run: the unit suite (the audit's last measured count is the 0.0.30 commit's own CI).
+
 ## Pre-save consistency checklist (this pass)
 
 - [x] Section A ↔ findings: no GAP rows remain; partial row I6 cites F11; I8 cites the F7 residual.
@@ -1381,3 +1406,4 @@ the harness is localnet-only and no real-chain job exists.
 - [x] Re-verification log entry added (2026-10-09).
 - [x] 2026-10-22: F25 added to the summary counts, Section D and the log; F13 notes the dependency.
 - [x] 2026-10-10 fix wave: dispositions, executive summary counts, Section D, OQ3 and OQ5, C.1 counts and the log updated together; unticked D items are mainnet-blocked or maintainer-only, each named.
+- [x] 2026-10-22 (close-out): F26 added to the summary counts, the findings table, the executive summary and the log; Section D read-integrity box ticked; OQ4 confirmed.
