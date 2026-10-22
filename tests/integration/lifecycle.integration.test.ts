@@ -9,6 +9,7 @@ import {
   localnetSigner,
   localnetAddress,
   aggregatorRead,
+  assertLocalnetWalFunded,
   uploadImageBytesWithRetry,
 } from './harness.js'
 import {
@@ -25,9 +26,12 @@ describe.skipIf(!LOCALNET_READY)('walrus-client localnet blob lifecycle', () => 
   let blobId: string
   let blobObjectId: string
 
-  beforeAll(() => {
+  beforeAll(async () => {
     client = localnetWalrusClient()
     signer = localnetSigner()
+    // Two uploads (3 epochs each: the content-addressed re-upload registers again) and one 2-epoch
+    // extension. Fails here, clearly, if bootstrap did not fund the wallet.
+    await assertLocalnetWalFunded(client, payload.length, { uploads: 2, uploadEpochs: 3, extendEpochs: 2 })
   })
 
   it('uploads a raw blob and reads identical bytes back from the aggregator', async () => {

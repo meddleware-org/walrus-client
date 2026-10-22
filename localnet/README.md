@@ -67,6 +67,7 @@ The suites read these (via `set -a && source .env.localnet`):
 | `WALRUS_AGGREGATOR_HOST` | aggregator for read-back |
 | `WALRUS_SYSTEM_OBJECT_ID` / `WALRUS_STAKING_POOL_ID` / `WALRUS_EXCHANGE_IDS` | harvested Walrus `packageConfig` (passed to `createWalrusClient({ walrusPackageConfig })`) |
 | `WALRUS_TEST_ADDRESS` / `WALRUS_TEST_SECRET_KEY` | funded localnet keypair (bech32 `suiprivkey…`) |
+| `WALRUS_WAL_COIN_TYPE` | the WAL coin type of this testbed (`0x…::wal::WAL`), for balance checks |
 | `ACCESS_GATE_PACKAGE_ID` / `ACCESS_GATE_ID` / `ACCESS_GATE_PLATFORM_CONFIG_ID` | localnet access_gate deployment (for the relay's gated path and purchase-terms read) |
 
 ## How this maps onto the upstream testbed (important)
@@ -84,9 +85,18 @@ host ports and ships no aggregator/publisher. This harness adapts it for host-dr
   runs two gateways on the testbed network with published ports: the **upload-relay** (`:57391`, the
   write path) and a **`walrus aggregator`** (`:57392`, the read path — read-only, no wallet/WAL).
 - **Writes need WAL.** Storage reservation is paid in WAL, and `get-wal` (SUI→WAL exchange) is
-  **testnet-only** while localnet ships no exchange object. So blob *reads* work out of the box, but
-  *writes* require sourcing WAL to `WALRUS_TEST_ADDRESS` (e.g. from the deploy admin wallet / treasury)
-  — the one remaining step for write-side integration coverage.
+  **testnet-only** while localnet ships no exchange object. Bootstrap therefore moves the WAL that
+  `walrus-deploy` minted to its generated admin wallet over to `WALRUS_TEST_ADDRESS` (step 3b of
+  `bootstrap-localnet.sh`). The lookups go through the **Sui CLI (gRPC)**, never the node's JSON-RPC:
+  current Sui nodes no longer serve JSON-RPC (it answers 404), and the earlier `curl` lookups failed
+  silently, leaving the wallet unfunded. The step is **fail-fast**: if the WAL cannot be found, the
+  transfer fails, or the test address does not end up holding at least `LN_WAL_MIN_FROST`, bootstrap
+  stops with a message naming the cause (the floor is `(storage_price × max epochs + write_price) ×
+  units × margin`, from the prices in `scripts/lib.sh` that the deploy script also uses). The suites
+  repeat the check against the live system object (`assertLocalnetWalFunded` in
+  `tests/integration/harness.ts`) with the exact cost of what they are about to do, so an unfunded
+  wallet reads "test wallet … holds 0 FROST of WAL but this suite needs …" instead of an opaque
+  `Insufficient balance of …::wal::WAL` mid-suite. Blob *reads* need no WAL.
 
 ## Upstream ref and images
 
@@ -98,6 +108,12 @@ Everything the harness pulls is pinned by an immutable reference (tags can be mo
 | walrus-service image | `mysten/walrus-service:testnet-v1.56.0@sha256:d4bf4ed…` | `WALRUS_IMAGE_NAME` (or `WALRUS_RELEASE_TAG`, which drops the digest) |
 | upload-relay image | `mysten/walrus-upload-relay:testnet-v1.58.1@sha256:f8d3a10…` | `WALRUS_RELAY_IMAGE` |
 | aggregator image | the walrus-service image above | `WALRUS_IMAGE_NAME` |
+| Sui node image (`sui-localnet`) | `mysten/sui-tools:mainnet-v1.82.3@sha256:9dbefdc…` | `SUI_TOOLS_IMAGE` |
+
+The upstream compose runs the Sui node from the **floating** `mysten/sui-tools:mainnet` tag; `testbed.override.yml`
+replaces it with the digest above. The floating tag was the cause of the red nightlies of 2026-10-21/22: it moved
+to a node that serves gRPC only, which broke the old JSON-RPC WAL lookup. Move the pin deliberately (the Sui CLI that
+CI installs must still speak to it).
 
 `scripts/up.sh` re-checks-out the pinned ref every run. To move to a new release, change the tag, SHA
 and digest defaults in `scripts/lib.sh` together (`git ls-remote https://github.com/MystenLabs/walrus.git

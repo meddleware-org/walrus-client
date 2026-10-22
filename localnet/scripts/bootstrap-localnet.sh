@@ -115,7 +115,11 @@ log "funded test address ${TEST_ADDR}"
 # its own Sui keypair (ignoring any mounted Sui config) and stores it in the deploy-outputs volume at
 # /opt/walrus/outputs/sui_admin.yaml. WAL is minted to that generated address during deploy.
 # Strategy: read sui_admin.yaml from the volume, extract the admin address + keystore, import the
-# admin private key, find the WAL coin, transfer it to TEST_ADDR, then switch back.
+# admin private key, find the WAL coin (through the Sui CLI — see lib.sh: the node serves gRPC only,
+# JSON-RPC answers 404), transfer it to TEST_ADDR, then verify the test address really holds it.
+# Every failure here is FATAL: a run that carries on without WAL only fails later in the suites with
+# "Insufficient balance of …::wal::WAL", far from the cause (that is how the 2026-10-21/22 nightly
+# went red).
 log "sourcing WAL: reading deploy admin wallet from outputs volume (${VOL})…"
 ADMIN_YAML="$(dock run --rm -v "${VOL}:${DEPLOY_OUTPUTS_MOUNT}:ro" busybox cat "${DEPLOY_OUTPUTS_MOUNT}/sui_admin.yaml" 2>/dev/null || true)"
 # Parse active_address from the standard Sui client.yaml format (with or without quotes).
@@ -124,14 +128,17 @@ ADMIN_ADDR="$(printf '%s\n' "${ADMIN_YAML}" | sed -n 's/^active_address:[[:space
 ADMIN_KEYSTORE_PATH="$(printf '%s\n' "${ADMIN_YAML}" | sed -n 's/.*File:[[:space:]]*//p' | head -1 | sed 's/[[:space:]]*$//')"
 ADMIN_KEYSTORE_FILE="${ADMIN_KEYSTORE_PATH##*/}"  # basename via parameter expansion (no subshell)
 
-if [ -n "${ADMIN_ADDR}" ] && [ -n "${ADMIN_KEYSTORE_FILE}" ]; then
-  log "deploy admin: addr=${ADMIN_ADDR}, keystore=${ADMIN_KEYSTORE_FILE}"
-  ADMIN_KEYSTORE_RAW="$(dock run --rm -v "${VOL}:${DEPLOY_OUTPUTS_MOUNT}:ro" busybox cat "${DEPLOY_OUTPUTS_MOUNT}/${ADMIN_KEYSTORE_FILE}" 2>/dev/null || true)"
-  # Extract the raw keystore entry (base64([scheme_byte || private_key])) from the admin keystore.
-  # Rather than using `sui keytool import` (which can fail on alias conflicts and has version-varying
-  # output formats), we directly append the entry to the local sui.keystore JSON array. The Sui CLI
-  # reads the keystore file fresh on each invocation, so the address becomes immediately available.
-  ADMIN_KEY_ENTRY="$(printf '%s' "${ADMIN_KEYSTORE_RAW}" | python3 -c "
+if [ -z "${ADMIN_ADDR}" ] || [ -z "${ADMIN_KEYSTORE_FILE}" ]; then
+  die "could not parse the deploy admin wallet from sui_admin.yaml (addr='${ADMIN_ADDR}', keystore='${ADMIN_KEYSTORE_FILE}'). First 15 lines:
+$(printf '%s\n' "${ADMIN_YAML}" | head -15 | sed 's/^/  /')"
+fi
+log "deploy admin: addr=${ADMIN_ADDR}, keystore=${ADMIN_KEYSTORE_FILE}"
+ADMIN_KEYSTORE_RAW="$(dock run --rm -v "${VOL}:${DEPLOY_OUTPUTS_MOUNT}:ro" busybox cat "${DEPLOY_OUTPUTS_MOUNT}/${ADMIN_KEYSTORE_FILE}" 2>/dev/null || true)"
+# Extract the raw keystore entry (base64([scheme_byte || private_key])) from the admin keystore.
+# Rather than using `sui keytool import` (which can fail on alias conflicts and has version-varying
+# output formats), we directly append the entry to the local sui.keystore JSON array. The Sui CLI
+# reads the keystore file fresh on each invocation, so the address becomes immediately available.
+ADMIN_KEY_ENTRY="$(printf '%s' "${ADMIN_KEYSTORE_RAW}" | python3 -c "
 import sys, json
 try:
   keys = json.load(sys.stdin)
@@ -139,145 +146,91 @@ try:
 except Exception as e:
   sys.stderr.write(str(e) + '\n')
 " 2>/dev/null || true)"
+[ -n "${ADMIN_KEY_ENTRY}" ] || die "could not extract the admin keystore entry from ${ADMIN_KEYSTORE_FILE} in the deploy-outputs volume"
 
-  if [ -n "${ADMIN_KEY_ENTRY}" ]; then
-    LOCAL_KEYSTORE="${SUI_CONFIG_DIR}/sui.keystore"
-    if [ -f "${LOCAL_KEYSTORE}" ]; then
-      python3 - "${ADMIN_KEY_ENTRY}" "${LOCAL_KEYSTORE}" <<'PYEOF' 2>/dev/null || true
-import sys, json
+LOCAL_KEYSTORE="${SUI_CONFIG_DIR}/sui.keystore"
+[ -f "${LOCAL_KEYSTORE}" ] || die "local sui.keystore not found at ${LOCAL_KEYSTORE}"
+python3 - "${ADMIN_KEY_ENTRY}" "${LOCAL_KEYSTORE}" <<'PYEOF' || die "could not add the admin key to ${LOCAL_KEYSTORE}"
+import sys, json, os
 entry, ks_file = sys.argv[1], sys.argv[2]
 with open(ks_file) as f:
     ks = json.load(f)
 if entry not in ks:
     ks.append(entry)
-    import tempfile, os
     tmp = ks_file + '.tmp'
     with open(tmp, 'w') as f:
         json.dump(ks, f)
     os.replace(tmp, ks_file)
 PYEOF
-      log "admin key injected into the testbed keystore (addr: ${ADMIN_ADDR})"
-    else
-      warn "local sui.keystore not found at ${LOCAL_KEYSTORE}"
-    fi
-  fi
+log "admin key injected into the testbed keystore (addr: ${ADMIN_ADDR})"
 
-  if [ -n "${ADMIN_KEY_ENTRY}" ]; then
-    # walrus-deploy spends its SUI gas during contract publishing, leaving the admin wallet with
-    # insufficient gas for a transfer-object call. Top it up from the localnet faucet first.
-    curl -fsS -X POST "${LN_FAUCET_URL}" -H 'Content-Type: application/json' \
-      -d "{\"FixedAmountRequest\":{\"recipient\":\"${ADMIN_ADDR}\"}}" >/dev/null 2>&1 || true
-    # Use suix_getAllBalances (returns one entry per coin type, no pagination) to find the WAL coin
-    # type string. suix_getAllCoins paginates and WAL can be beyond page 1 if the admin has many SUI
-    # gas objects from the faucet. Once we have the type, suix_getCoins fetches the object id.
-    ALL_BALANCES="$(curl -fsS "${LN_RPC_URL}" -X POST -H 'Content-Type: application/json' \
-      -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"suix_getAllBalances\",\"params\":[\"${ADMIN_ADDR}\"]}" 2>/dev/null || true)"
-    WAL_COIN_TYPE="$(printf '%s' "${ALL_BALANCES}" | python3 -c "
-import sys, json
-try:
-  for b in json.load(sys.stdin).get('result', []):
-    ct = b.get('coinType', '')
-    if '::wal::WAL' in ct:
-      print(ct); break
-except Exception: pass
-" 2>/dev/null || true)"
-    WAL_COIN_OBJ=""
-    if [ -n "${WAL_COIN_TYPE}" ]; then
-      WAL_COIN_INFO="$(curl -fsS "${LN_RPC_URL}" -X POST -H 'Content-Type: application/json' \
-        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"suix_getCoins\",\"params\":[\"${ADMIN_ADDR}\",\"${WAL_COIN_TYPE}\",null,1]}" 2>/dev/null || true)"
-      WAL_COIN_OBJ="$(printf '%s' "${WAL_COIN_INFO}" | python3 -c "
-import sys, json
-try:
-  coins = json.load(sys.stdin).get('result', {}).get('data', [])
-  if coins: print(coins[0].get('coinObjectId', ''))
-except Exception: pass
-" 2>/dev/null || true)"
+# walrus-deploy spends its SUI gas during contract publishing, leaving the admin wallet with
+# insufficient gas for a transfer. Top it up from the localnet faucet first.
+curl -fsS -X POST "${LN_FAUCET_URL}" -H 'Content-Type: application/json' \
+  -d "{\"FixedAmountRequest\":{\"recipient\":\"${ADMIN_ADDR}\"}}" >/dev/null 2>&1 || true
+
+# The WAL is normally at the admin. If not (a previous bootstrap on this same testbed already moved
+# it, i.e. it ran twice without `down.sh --clean`), look at every other keystore address.
+WAL_SOURCE_ADDR="${ADMIN_ADDR}"
+WAL_COIN="$(wal_largest_coin "${ADMIN_ADDR}")"
+if [ -z "${WAL_COIN}" ]; then
+  log "WAL not at admin — scanning keystore addresses for WAL…"
+  while IFS= read -r candidate; do
+    [ -z "${candidate}" ] && continue
+    [ "${candidate}" = "${ADMIN_ADDR}" ] && continue
+    cand_coin="$(wal_largest_coin "${candidate}")"
+    if [ -n "${cand_coin}" ]; then
+      WAL_SOURCE_ADDR="${candidate}"
+      WAL_COIN="${cand_coin}"
+      log "found WAL at keystore address ${candidate}"
+      # Fund this address for gas in case it also ran dry.
+      curl -fsS -X POST "${LN_FAUCET_URL}" -H 'Content-Type: application/json' \
+        -d "{\"FixedAmountRequest\":{\"recipient\":\"${candidate}\"}}" >/dev/null 2>&1 || true
+      break
     fi
-    if [ -n "${WAL_COIN_OBJ}" ]; then
-      WAL_SOURCE_ADDR="${ADMIN_ADDR}"
-    else
-      # Admin has no WAL — probably transferred to a previous test address in an earlier bootstrap
-      # run on this same testbed. Search all local keystore addresses as a fallback (handles the
-      # "bootstrap ran multiple times without down --clean" scenario).
-      log "WAL not at admin — scanning keystore addresses for WAL…"
-      WAL_SOURCE_ADDR=""
-      WAL_COIN_OBJ=""
-      while IFS= read -r candidate; do
-        [ -z "${candidate}" ] && continue
-        [ "${candidate}" = "${ADMIN_ADDR}" ] && continue
-        [ "${candidate}" = "${TEST_ADDR}" ] && continue
-        cand_balances="$(curl -fsS "${LN_RPC_URL}" -X POST -H 'Content-Type: application/json' \
-          -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"suix_getAllBalances\",\"params\":[\"${candidate}\"]}" 2>/dev/null || true)"
-        cand_wal_type="$(printf '%s' "${cand_balances}" | python3 -c "
-import sys, json
-try:
-  for b in json.load(sys.stdin).get('result', []):
-    ct = b.get('coinType','')
-    if '::wal::WAL' in ct: print(ct); break
-except Exception: pass
-" 2>/dev/null || true)"
-        candidate_wal_obj=""
-        if [ -n "${cand_wal_type}" ]; then
-          cand_coins="$(curl -fsS "${LN_RPC_URL}" -X POST -H 'Content-Type: application/json' \
-            -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"suix_getCoins\",\"params\":[\"${candidate}\",\"${cand_wal_type}\",null,1]}" 2>/dev/null || true)"
-          candidate_wal_obj="$(printf '%s' "${cand_coins}" | python3 -c "
-import sys, json
-try:
-  coins = json.load(sys.stdin).get('result', {}).get('data', [])
-  if coins: print(coins[0].get('coinObjectId', ''))
-except Exception: pass
-" 2>/dev/null || true)"
-        fi
-        if [ -n "${candidate_wal_obj}" ]; then
-          WAL_SOURCE_ADDR="${candidate}"
-          WAL_COIN_OBJ="${candidate_wal_obj}"
-          log "found WAL at keystore address ${candidate} (coin ${candidate_wal_obj})"
-          # Fund this address for gas in case it also ran dry.
-          curl -fsS -X POST "${LN_FAUCET_URL}" -H 'Content-Type: application/json' \
-            -d "{\"FixedAmountRequest\":{\"recipient\":\"${candidate}\"}}" >/dev/null 2>&1 || true
-          break
-        fi
-      done < <(sui client addresses --json 2>/dev/null | python3 -c "
+  done < <(sui client addresses --json 2>/dev/null | python3 -c "
 import sys, json
 try:
   d = json.load(sys.stdin)
   addrs = d if isinstance(d, list) else d.get('addresses', d.get('data', []))
   for a in addrs:
-    addr = a.get('address','') if isinstance(a, dict) else (a[0] if isinstance(a, list) else a)
+    # 1.8x prints [alias, address] pairs; older CLIs print objects or bare addresses.
+    if isinstance(a, dict): addr = a.get('address', '')
+    elif isinstance(a, list): addr = next((x for x in a if isinstance(x, str) and x.startswith('0x')), '')
+    else: addr = a
     if addr: print(addr)
 except Exception: pass
 " 2>/dev/null || true)
-    fi
-
-    if [ -n "${WAL_COIN_OBJ}" ] && [ -n "${WAL_SOURCE_ADDR}" ]; then
-      sui client switch --address "${WAL_SOURCE_ADDR}" >/dev/null 2>&1 || true
-      ACTIVE_ADDR="$(sui client active-address 2>/dev/null || true)"
-      if [ "${ACTIVE_ADDR}" != "${WAL_SOURCE_ADDR}" ]; then
-        warn "address switch failed (wanted ${WAL_SOURCE_ADDR}, got ${ACTIVE_ADDR:-unknown}) — cannot sign transfer"
-      else
-        # `sui client transfer-object` was removed in newer Sui CLI versions.
-        # Use a PTB (Programmable Transaction Block) to transfer arbitrary objects in v1.76.1+.
-        if TRANSFER_OUT="$(sui client ptb \
-          --transfer-objects "[@${WAL_COIN_OBJ}]" "@${TEST_ADDR}" \
-          --gas-budget 50000000 2>&1)"; then
-          log "WAL coin ${WAL_COIN_OBJ} transferred from ${WAL_SOURCE_ADDR} to ${TEST_ADDR}"
-        else
-          warn "WAL transfer failed:"
-          printf '%s\n' "${TRANSFER_OUT}" | grep -iE 'error|failed|cannot|insufficient' | head -5 | sed 's/^/  /' >&2 || \
-            printf '%s\n' "${TRANSFER_OUT}" | head -5 | sed 's/^/  /' >&2
-        fi
-      fi
-    else
-      warn "no WAL coin found anywhere in keystore — write-side integration tests will fail"
-    fi
-  else
-    warn "could not extract admin keystore entry — WAL transfer skipped"
-  fi
-else
-  warn "could not parse deploy admin wallet from sui_admin.yaml (addr='${ADMIN_ADDR}', keystore='${ADMIN_KEYSTORE_FILE}')"
-  warn "raw sui_admin.yaml (first 15 lines — check keystore File: format):"
-  printf '%s\n' "${ADMIN_YAML}" | head -15 | sed 's/^/  /' >&2
 fi
+[ -n "${WAL_COIN}" ] || die "no WAL coin found at the deploy admin ${ADMIN_ADDR} or any other keystore address — the testbed cannot fund blob writes. (Checked with 'sui client balance', i.e. over gRPC; is the localnet at ${LN_RPC_URL} up and is the sui CLI pointed at it?)"
+read -r WAL_COIN_TYPE WAL_COIN_OBJ WAL_COIN_AMOUNT <<< "${WAL_COIN}"
+log "WAL source ${WAL_SOURCE_ADDR}: coin ${WAL_COIN_OBJ} holds ${WAL_COIN_AMOUNT} FROST (${WAL_COIN_TYPE})"
+(( WAL_COIN_AMOUNT >= LN_WAL_MIN_FROST )) \
+  || die "the WAL coin (${WAL_COIN_AMOUNT} FROST) is below the ${LN_WAL_MIN_FROST} FROST the suites may need ((storage ${LN_STORAGE_PRICE} x ${LN_WAL_MAX_EPOCHS} epochs + write ${LN_WRITE_PRICE}) x ${LN_WAL_MAX_UNITS} units x ${LN_WAL_MARGIN} margin)."
+
+sui client switch --address "${WAL_SOURCE_ADDR}" >/dev/null 2>&1 || true
+ACTIVE_ADDR="$(sui client active-address 2>/dev/null || true)"
+[ "${ACTIVE_ADDR}" = "${WAL_SOURCE_ADDR}" ] \
+  || die "address switch failed (wanted ${WAL_SOURCE_ADDR}, got ${ACTIVE_ADDR:-unknown}) — cannot sign the WAL transfer"
+# `sui client transfer-object` was removed in newer Sui CLI versions: use a PTB to transfer the coin.
+if ! TRANSFER_OUT="$(sui client ptb \
+  --transfer-objects "[@${WAL_COIN_OBJ}]" "@${TEST_ADDR}" \
+  --gas-budget 50000000 2>&1)"; then
+  die "WAL transfer ${WAL_SOURCE_ADDR} -> ${TEST_ADDR} failed:
+$(printf '%s\n' "${TRANSFER_OUT}" | head -15 | sed 's/^/  /')"
+fi
+
+# Verify the delivery: the test address must now hold at least the floor (allow a few seconds for the
+# fullnode to index the transfer).
+WAL_TEST_TOTAL=0
+for _ in $(seq 1 15); do
+  WAL_TEST_TOTAL="$(wal_total "${TEST_ADDR}")"
+  (( WAL_TEST_TOTAL >= LN_WAL_MIN_FROST )) && break
+  sleep 2
+done
+(( WAL_TEST_TOTAL >= LN_WAL_MIN_FROST )) \
+  || die "WAL funding did not arrive: test address ${TEST_ADDR} holds ${WAL_TEST_TOTAL} FROST, needs at least ${LN_WAL_MIN_FROST}."
+log "WAL funded: ${TEST_ADDR} holds ${WAL_TEST_TOTAL} FROST (floor ${LN_WAL_MIN_FROST})"
 # Always switch back to the funded test address for subsequent steps (access_gate publish, etc.).
 sui client switch --address "${TEST_ADDR}" >/dev/null 2>&1 || true
 
@@ -329,6 +282,7 @@ export WALRUS_STAKING_POOL_ID=${STAKING_OBJECT}
 export WALRUS_EXCHANGE_IDS=$(echo "${EXCHANGE_OBJECTS}" | tr '\n' ',' | sed 's/,$//')
 export WALRUS_TEST_ADDRESS=${TEST_ADDR}
 export WALRUS_TEST_SECRET_KEY=${TEST_SECRET}
+export WALRUS_WAL_COIN_TYPE=${WAL_COIN_TYPE}
 export ACCESS_GATE_PACKAGE_ID=${AG_PACKAGE_ID:-}
 export ACCESS_GATE_ID=${AG_GATE_ID:-}
 export ACCESS_GATE_PLATFORM_CONFIG_ID=${AG_PLATFORM_CONFIG_ID:-}

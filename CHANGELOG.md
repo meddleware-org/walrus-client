@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Localnet harness (CI and test only; nothing in the published package changed): the nightly "Integration
+  (localnet)" run was red on 2026-10-21 and 2026-10-22 with `Insufficient balance of …::wal::WAL … Required: 16,
+  Available: 0`. The upstream testbed runs the Sui node from the floating `mysten/sui-tools:mainnet` tag, which moved
+  to a node that serves gRPC only (JSON-RPC answers 404); the bootstrap looked up the deploy admin's WAL with
+  JSON-RPC `curl` calls whose failures were swallowed, so the test wallet was never funded (only a warning).
+  The node image is now pinned by digest (`SUI_TOOLS_IMAGE`, `mainnet-v1.82.3`), the WAL lookups use the Sui CLI
+  (gRPC), and the keystore scan no longer mistakes an address alias for an address. Funding is fail-fast: bootstrap
+  stops with a clear message if the WAL cannot be found, the transfer fails, or the test address holds less than a
+  floor derived from the testbed's storage prices; the suite also checks the wallet against the live storage cost
+  before it starts. walrus-relay's integration workflow shares this harness and was passing only because its suite
+  needs no WAL.
+
 ## [0.0.30] - 2026-10-22
 
 ### Changed

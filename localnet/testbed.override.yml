@@ -9,6 +9,9 @@
 # and the aggregator/publisher sidecars (added once the base testbed deploys cleanly).
 services:
   sui-localnet:
+    # The upstream compose uses the floating `mysten/sui-tools:mainnet` tag; pinned by digest in
+    # scripts/lib.sh (SUI_TOOLS_IMAGE) so a Sui release cannot change the testbed under us.
+    image: ${SUI_TOOLS_IMAGE:?source scripts/lib.sh first}
     ports:
       - "9000:9000" # JSON-RPC / gRPC
       - "9123:9123" # faucet

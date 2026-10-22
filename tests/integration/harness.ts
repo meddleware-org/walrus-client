@@ -5,6 +5,7 @@ import { SuiGrpcClient } from '@mysten/sui/grpc'
 import { NotEnoughBlobConfirmationsError } from '@mysten/walrus'
 import { createWalrusClient, type WalrusPackageConfig } from '../../src/client.js'
 import { uploadImageBytes } from '../../src/upload.js'
+import { assertWalFunded, requiredWal, type WalPlan } from './wal-funding.js'
 
 /** True when the localnet env contract is present — used to skip suites when it is not. */
 export const LOCALNET_READY =
@@ -84,4 +85,23 @@ export async function aggregatorRead(blobId: string): Promise<Uint8Array> {
   const res = await fetch(`${host}/v1/blobs/${blobId}`)
   if (!res.ok) throw new Error(`aggregator read ${blobId} → HTTP ${res.status}`)
   return new Uint8Array(await res.arrayBuffer())
+}
+
+/**
+ * Fail fast, with a clear message, when the test wallet cannot pay for `plan`: the WAL needed is
+ * computed from the testbed's live storage price (system object) with a margin, and compared with the
+ * wallet's WAL balance. Without it a funding failure surfaces as "Insufficient balance of …::wal::WAL"
+ * from a later transaction build, followed by unrelated follow-on failures.
+ */
+export async function assertLocalnetWalFunded(
+  client: ReturnType<typeof localnetWalrusClient>,
+  blobSize: number,
+  plan: WalPlan,
+): Promise<void> {
+  const need = await requiredWal((size, epochs) => client.walrus.storageCost(size, epochs), blobSize, plan)
+  const { balance } = await client.core.getBalance({
+    owner: localnetAddress(),
+    coinType: required('WALRUS_WAL_COIN_TYPE'),
+  })
+  assertWalFunded(BigInt(balance.balance), need, localnetAddress())
 }

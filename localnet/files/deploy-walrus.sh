@@ -16,6 +16,9 @@
 set -euo pipefail
 
 EPOCH_DURATION=${EPOCH_DURATION:-2m}
+# FROST prices; set by deploy-patch.override.yml from LN_STORAGE_PRICE / LN_WRITE_PRICE (scripts/lib.sh).
+STORAGE_PRICE=${STORAGE_PRICE:-5}
+WRITE_PRICE=${WRITE_PRICE:-1}
 
 # Locate the `walrus` system-contract package (a dir with Move.toml). Order of preference:
 #   1. The pinned checkout's contracts, mounted at /opt/walrus/mw-contracts — guaranteed to match the
@@ -86,8 +89,8 @@ rm -rf /opt/walrus/outputs/*
   --sui-network 'http://sui-localnet:9000;http://sui-localnet:9123/gas' \
   --n-shards 100 \
   --host-addresses 10.0.0.10 10.0.0.11 10.0.0.12 10.0.0.13 \
-  --storage-price 5 \
-  --write-price 1 \
+  --storage-price "${STORAGE_PRICE:-5}" \
+  --write-price "${WRITE_PRICE:-1}" \
   --epoch-duration "$EPOCH_DURATION" >/opt/walrus/outputs/deploy
 
 /opt/walrus/bin/walrus-deploy generate-dry-run-configs \

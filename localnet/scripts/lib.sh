@@ -39,6 +39,13 @@ fi
 # different CLI). Our patched deploy script (MW_PATCH_DEPLOY=1) remains the layer that selects flags
 # matching the binary API. Override WALRUS_IMAGE_NAME to test with a different image.
 export WALRUS_IMAGE_NAME="${WALRUS_IMAGE_NAME:-mysten/walrus-service:${WALRUS_RELEASE_TAG}${WALRUS_IMAGE_DIGEST_SUFFIX}}"
+# The Sui node image (validators + faucet + fullnode). The upstream compose uses the floating
+# `mysten/sui-tools:mainnet` tag, which moves with every mainnet release: on 2026-10-21 it moved to a
+# build that serves gRPC only (JSON-RPC answers 404), which silently broke the WAL lookup below and
+# turned the nightly red. Pinned by digest (tag mainnet-v1.82.3) so a Sui release can no longer change the
+# testbed under us; move it deliberately (the Sui CLI that CI installs only has to speak gRPC to it).
+# testbed.override.yml applies it to the sui-localnet service.
+export SUI_TOOLS_IMAGE="${SUI_TOOLS_IMAGE:-mysten/sui-tools:mainnet-v1.82.3@sha256:9dbefdc0a57c61002ecf9b182286b21dd7ed945476980f3f4b62e0a89634215c}"
 # The upstream compose that stands up Sui (validators + faucet + fullnode) + 4 walrus nodes.
 UPSTREAM_COMPOSE="${LN_UPSTREAM}/docker/local-testbed/docker-compose.yaml"
 # Our override — publishes the Sui fullnode + faucet ports to the host (upstream exposes none).
@@ -76,6 +83,19 @@ testbed_compose() {
 # Discover the project-namespaced deploy-outputs volume (e.g. local-testbed_walrus-deploy-outputs).
 # `|| true` so a no-match doesn't abort a `set -e` caller via pipefail (the caller checks emptiness).
 deploy_outputs_volume() { dock volume ls --format '{{.Name}}' | { grep -E 'walrus-deploy-outputs' || true; } | head -1; }
+
+# Storage prices the testbed is deployed with (FROST). files/deploy-walrus.sh reads them (the deploy-patch
+# override passes them in), and bootstrap derives the WAL it must deliver from them:
+#   cost(blob) = (storage_price * epochs + write_price) * encoded_units      (e.g. 1 unit, 3 epochs: 16)
+# LN_WAL_MIN_FROST is a floor with a wide margin (units, epochs and the safety factor below), used to
+# fail bootstrap fast when the funding step did not deliver; the suites additionally check the exact
+# cost from the live system object (tests/integration/harness.ts).
+export LN_STORAGE_PRICE="${LN_STORAGE_PRICE:-5}"
+export LN_WRITE_PRICE="${LN_WRITE_PRICE:-1}"
+LN_WAL_MAX_UNITS="${LN_WAL_MAX_UNITS:-1024}"    # encoded units of one test blob, generous
+LN_WAL_MAX_EPOCHS="${LN_WAL_MAX_EPOCHS:-53}"    # the contract's max epochs ahead
+LN_WAL_MARGIN="${LN_WAL_MARGIN:-10}"            # safety factor
+LN_WAL_MIN_FROST="$(( (LN_STORAGE_PRICE * LN_WAL_MAX_EPOCHS + LN_WRITE_PRICE) * LN_WAL_MAX_UNITS * LN_WAL_MARGIN ))"
 
 LN_RPC_URL="${LN_RPC_URL:-http://127.0.0.1:9000}"
 LN_FAUCET_URL="${LN_FAUCET_URL:-http://127.0.0.1:9123/gas}"
@@ -137,8 +157,9 @@ dock() { "${MW_DOCKER[@]}" "$@"; }
 write_testbed_env() {
   local testbed_dir="${LN_UPSTREAM}/docker/local-testbed"
   [ -d "${testbed_dir}" ] || return 0
-  printf 'WALRUS_IMAGE_NAME=%s\nMW_DEPLOYER_RUNTIME_CFG=%s\nMW_DEPLOY_SCRIPT=%s\nMW_CONTRACTS_DIR=%s\n' \
+  printf 'WALRUS_IMAGE_NAME=%s\nMW_DEPLOYER_RUNTIME_CFG=%s\nMW_DEPLOY_SCRIPT=%s\nMW_CONTRACTS_DIR=%s\nSUI_TOOLS_IMAGE=%s\nLN_STORAGE_PRICE=%s\nLN_WRITE_PRICE=%s\n' \
     "${WALRUS_IMAGE_NAME}" "${MW_DEPLOYER_RUNTIME_CFG}" "${MW_DEPLOY_SCRIPT}" "${MW_CONTRACTS_DIR}" \
+    "${SUI_TOOLS_IMAGE}" "${LN_STORAGE_PRICE}" "${LN_WRITE_PRICE}" \
     > "${testbed_dir}/.env"
 }
 
@@ -157,4 +178,52 @@ wait_until() {
 # Extract a scalar from a YAML file without a yaml dependency (simple `key: value` lines).
 yaml_scalar() { # yaml_scalar <file> <key>
   sed -n "s/^[[:space:]]*$2:[[:space:]]*\"\{0,1\}\([^\"]*\)\"\{0,1\}[[:space:]]*$/\1/p" "$1" | head -1
+}
+
+# WAL lookups go through the Sui CLI (gRPC), NOT the fullnode's JSON-RPC: current Sui nodes no longer
+# serve JSON-RPC (it answers 404), and a curl against it fails silently. The CLI must already point at
+# the localnet env (bootstrap-localnet.sh exports SUI_CONFIG_DIR and switches to it).
+#   wal_balance_json <address>   → the CLI's `balance --with-coins --json` output ('' on error)
+#   wal_largest_coin <address>   → "<coinType> <coinObjectId> <balance>" of its largest WAL coin ('' if none)
+#   wal_total <address>          → the address's total WAL balance in FROST (0 if none)
+wal_balance_json() { sui client balance "$1" --with-coins --json 2>/dev/null || true; }
+wal_largest_coin() {
+  wal_balance_json "$1" | python3 -c '
+import sys, json
+def walk(x):
+    if isinstance(x, list):
+        for i in x: yield from walk(i)
+    elif isinstance(x, dict):
+        if "coins" in x: yield x
+        else:
+            for v in x.values(): yield from walk(v)
+try:
+    best = None
+    for e in walk(json.load(sys.stdin)):
+        for c in e["coins"]:
+            if c["coinType"].endswith("::wal::WAL") and (best is None or int(c["balance"]) > int(best["balance"])):
+                best = c
+    if best: print(best["coinType"], best["coinObjectId"], best["balance"])
+except Exception as err:
+    sys.stderr.write("wal_largest_coin: " + str(err) + "\n")
+' 2>/dev/null || true
+}
+wal_total() {
+  wal_balance_json "$1" | python3 -c '
+import sys, json
+def walk(x):
+    if isinstance(x, list):
+        for i in x: yield from walk(i)
+    elif isinstance(x, dict):
+        if "coins" in x: yield x
+        else:
+            for v in x.values(): yield from walk(v)
+total = 0
+try:
+    for e in walk(json.load(sys.stdin)):
+        for c in e["coins"]:
+            if c["coinType"].endswith("::wal::WAL"): total += int(c["balance"])
+except Exception: pass
+print(total)
+' 2>/dev/null || echo 0
 }

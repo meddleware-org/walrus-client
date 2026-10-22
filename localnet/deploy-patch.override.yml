@@ -9,6 +9,11 @@
 # paths against the FIRST compose file's dir (the upstream one), not this override's.
 services:
   walrus-deploy:
+    # The storage / write prices (FROST) — one source of truth in scripts/lib.sh; bootstrap derives the WAL
+    # it must deliver to the test wallet from them.
+    environment:
+      - STORAGE_PRICE=${LN_STORAGE_PRICE:-5}
+      - WRITE_PRICE=${LN_WRITE_PRICE:-1}
     volumes:
       - ${MW_DEPLOY_SCRIPT:?MW_DEPLOY_SCRIPT must be set (source scripts/lib.sh)}:/root/deploy-walrus.sh:ro
       # The pinned walrus checkout's own contracts/ (version-matched to WALRUS_IMAGE_NAME), so the
