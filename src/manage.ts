@@ -27,11 +27,11 @@ async function assertBlobObject(client: WalrusClient, blobObjectId: string): Pro
   try {
     type = (await client.core.getObject({ objectId: blobObjectId })).object.type
   } catch (err) {
-    if (isMissingFieldError(err)) throw new Error(`walrus-client: no Walrus Blob object ${blobObjectId}`, { cause: err })
+    if (isMissingFieldError(err)) throw new Error(`walrus-storage-client: no Walrus Blob object ${blobObjectId}`, { cause: err })
     throw err
   }
   if (normalizeStructTag(type) !== normalizeStructTag(blobType)) {
-    throw new Error(`walrus-client: object ${blobObjectId} is not a Walrus Blob`)
+    throw new Error(`walrus-storage-client: object ${blobObjectId} is not a Walrus Blob`)
   }
 }
 

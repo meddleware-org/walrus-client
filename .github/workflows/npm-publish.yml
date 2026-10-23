@@ -64,7 +64,7 @@ jobs:
             --json conclusion,headSha,url,createdAt,event | node .github/localnet-gate.mjs
 
   publish-npm:
-    name: npmjs (@meddleware/walrus-client)
+    name: npmjs (@meddleware/walrus-storage-client)
     needs: [verify, localnet-gate]
     runs-on: ubuntu-latest
     permissions:

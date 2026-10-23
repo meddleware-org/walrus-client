@@ -1,5 +1,5 @@
 # Walrus upload-relay config for the localnet harness — NO TIP (free) so tests need no WAL for tips.
-# Mirrors the tagged-enum schema used by the production overlay (post-bootstrap/walrus), but with
+# Mirrors the tagged-enum schema used by the production overlay (post-bootstrap/walrus-storage), but with
 # the tip disabled. Mounted into the relay container at /etc/walrus/relay.yaml.
 tip_config: !no_tip
 tx_freshness_threshold_secs: 36000

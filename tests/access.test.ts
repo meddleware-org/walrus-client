@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { decodeAccessProof } from '@meddleware/nft-gate-client'
+import { decodeAccessProof } from '@meddleware/access-gate-gateway-client'
 import {
   personalMessage,
   buildAccessProofToken,

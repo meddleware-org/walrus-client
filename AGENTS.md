@@ -1,10 +1,10 @@
-# AGENTS.md — @meddleware/walrus-client
+# AGENTS.md — @meddleware/walrus-storage-client
 
 ## Package identity
 
 | Field | Value |
 |---|---|
-| npm name | `@meddleware/walrus-client` |
+| npm name | `@meddleware/walrus-storage-client` |
 | Version | see `package.json` (the source of truth; patch bumps only until mainnet) |
 | Licence | 0BSD |
 | Type | TypeScript source package; `dist/` holds the `.d.ts` declarations only (`npm run build`) |
@@ -13,7 +13,7 @@
 ## Package layout
 
 ```
-walrus-client/
+walrus-storage-client/
 ├── src/
 │   ├── index.ts       — public re-exports of the root entry point (`.`)
 │   ├── client.ts      — createWalrusClient(), host constants, WalrusNetwork type, relayAuthFetch
@@ -47,11 +47,11 @@ walrus-client/
 |---|---|
 | `client.ts` | Factory function + network constants. Entry point for all consumers. |
 | `upload.ts` | Node and browser upload paths. `createUploadFlow` is the browser-safe multi-step variant. |
-| `flow.ts` | `runBlobUpload` and the resume conventions (fresh register, persisted consume, same-registration retry). Conflict handling reads nft-gate-client's `GATEWAY_CONFLICT_CODES` through `parseGatewayError`. |
+| `flow.ts` | `runBlobUpload` and the resume conventions (fresh register, persisted consume, same-registration retry). Conflict handling reads access-gate-gateway-client's `GATEWAY_CONFLICT_CODES` through `parseGatewayError`. |
 | `http.ts` | Publisher store and aggregator read over `fetch`; https only, bounded responses, no redirects. |
 | `manage.ts` | Blob lifetime extension and attribute CRUD. `*Transaction` variants return unsigned `Transaction` for wallet signing. |
 | `query.ts` | Owned-blob enumeration. Uses dynamic type resolution — no hardcoded package addresses. |
-| `access.ts` | Challenge/proof construction for NFT-gated relay. Wire format must match `nft-gate` gateway. |
+| `access.ts` | Challenge/proof construction for NFT-gated relay. Wire format must match access-gate gateway. |
 
 ## Key constants
 
@@ -94,10 +94,10 @@ Checklist before tagging a new version:
 This package is the published Walrus storage/client layer. When making breaking changes,
 coordinate with its downstream consumers:
 
-- [`@meddleware/walrus-relay`](https://github.com/meddleware-org/walrus-relay) — relay UI library
+- [`@meddleware/walrus-storage-kit`](https://github.com/meddleware-org/walrus-storage-kit) — relay UI library
   (wires `createWalrusClient` / `createBlobUploadFlow` into the upload widget)
-- [`@meddleware/walrus-ui`](https://github.com/meddleware-org/walrus-ui) — standalone uploader app
+- [`@meddleware/walrus-storage-ui`](https://github.com/meddleware-org/walrus-storage-ui) — standalone uploader app
 - `token-deployer-sui` — token icon upload
 
-Its own upstream dependency is [`@meddleware/nft-gate-client`](https://github.com/meddleware-org/nft-gate-client)
+Its own upstream dependency is [`@meddleware/access-gate-gateway-client`](https://github.com/meddleware-org/access-gate-gateway-client)
 (the access-proof wire format re-exported from `src/access.ts`).

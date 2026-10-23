@@ -7,7 +7,7 @@
  * `createWalrusClient({ uploadRelayAuthToken })`, which threads it as the relay
  * `Authorization: Bearer` header (see `client.ts`).
  *
- * Core primitives are imported from `@meddleware/nft-gate-client` (the canonical package).
+ * Core primitives are imported from `@meddleware/access-gate-gateway-client` (the canonical package).
  * This module re-exports them under Walrus-friendly aliases and adds the one-shot
  * `createRelayAccessToken` convenience function.
  */
@@ -21,7 +21,7 @@ import {
   encodeAccessProof,
   buildAccessProof,
   fetchChallenge,
-} from '@meddleware/nft-gate-client'
+} from '@meddleware/access-gate-gateway-client'
 
 // ── Re-exports under Walrus-client aliases ────────────────────────────────────
 

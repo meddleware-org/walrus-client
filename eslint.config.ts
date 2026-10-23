@@ -8,13 +8,13 @@ export default defineConfig(
   // localnet/ vendors an upstream Walrus checkout with its own tooling — not ours to lint.
   globalIgnores(['**/dist/**', '**/coverage/**', '**/*.d.ts', 'localnet/**']),
   {
-    name: 'walrus-client/typescript',
+    name: 'walrus-storage-client/typescript',
     files: ['**/*.{ts,mts,tsx}'],
     extends: [tseslint.configs.recommended],
   },
 
   {
-    name: 'walrus-client/overrides',
+    name: 'walrus-storage-client/overrides',
     files: ['**/*.{ts,mts,tsx}'],
     rules: {
       // Underscore-prefixed args/vars are an intentional "unused" marker; rest-sibling
@@ -28,7 +28,7 @@ export default defineConfig(
 
   {
     // Tests use deliberately loose typing for mocks/stubs.
-    name: 'walrus-client/test-overrides',
+    name: 'walrus-storage-client/test-overrides',
     files: ['**/*.{test,spec}.{ts,tsx}', 'tests/**'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',

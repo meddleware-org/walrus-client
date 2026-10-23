@@ -1,7 +1,7 @@
-# Security Audit — `walrus-client`
+# Security Audit — `walrus-storage-client`
 
 **Classification:** Internal security review (initial audit — awaiting external review)
-**Project:** walrus-client (`@meddleware/walrus-client`) — the Walrus storage SDK layer for the apps.
+**Project:** walrus-storage-client (`@meddleware/walrus-storage-client`) — the Walrus storage SDK layer for the apps.
   - **SDK surface:** a client factory over `@mysten/walrus`, with upload-relay wiring, a tip cap and a
     relay-auth `fetch` hook.
   - **Uploads and management:** quilt and raw-blob uploads; lifetime and attribute management;
@@ -24,24 +24,24 @@
   only. They sign on an ephemeral localnet, never on a real chain.
 
 Not triggered: AUTH (this package issues, verifies and decides nothing: it injects a caller-supplied
-relay token and asks `@meddleware/nft-gate-client` to sign the access proof; the signed-challenge
-design is audited in `nft-gate-client-audit.md`), SEAL (no encryption here), VUE, WORKERS, IMG (no
+relay token and asks `@meddleware/access-gate-gateway-client` to sign the access proof; the signed-challenge
+design is audited in `access-gate-gateway-client-audit.md`), SEAL (no encryption here), VUE, WORKERS, IMG (no
 container image), PROXY, GO, RUST, SITE, PLATFORM.
 
 **Deployment status:**
 
-- **2026-10-22: npm `@meddleware/walrus-client` `latest` is 0.0.30** (tag `v0.0.30` = `ed1257f`). 0.0.29 (tag `v0.0.29` = `9e3d204`, 2026-10-19) lowered `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST` to 5_000_000 and exported the localnet
-  platform-config id; 0.0.30 depends on `@meddleware/nft-gate-client` `^0.0.18` and fixes F26 (the gated flow passed a synthetic challenge expiry of 0, which 0.0.18 refuses). Consumers on `^0.0.30`: walrus-relay 0.1.33, walrus-ui 0.1.61, seal-ui 0.0.40, token-deployer-ui 0.0.38, the dashboard (0.1.88).
-- npm `@meddleware/walrus-client` **0.0.28**, released 2026-10-10 (published 2026-10-10T19:25Z) from
+- **2026-10-22: npm `@meddleware/walrus-storage-client` `latest` is 0.0.30** (tag `v0.0.30` = `ed1257f`). 0.0.29 (tag `v0.0.29` = `9e3d204`, 2026-10-19) lowered `DEFAULT_UPLOAD_RELAY_MAX_TIP_MIST` to 5_000_000 and exported the localnet
+  platform-config id; 0.0.30 depends on `@meddleware/access-gate-gateway-client` `^0.0.18` and fixes F26 (the gated flow passed a synthetic challenge expiry of 0, which 0.0.18 refuses). Consumers on `^0.0.30`: walrus-relay 0.1.33, walrus-storage-ui 0.1.61, sealed-storage-ui 0.0.40, token-issuance-ui 0.0.38, the dashboard (0.1.88).
+- npm `@meddleware/walrus-storage-client` **0.0.28**, released 2026-10-10 (published 2026-10-10T19:25Z) from
   tag `v0.0.28` = `7a26fd7` (code commit `cdafcd3`; the later commit only records the hash in this audit). It
   carries an SLSA v1 provenance attestation (`dist.attestations`, checked on the registry 2026-10-18). 0.0.27
   (2026-10-09, tag `v0.0.27` = `83521fc`) was the version of the 2026-10-09 pass.
-- Consumed at `^0.0.28` (verified 2026-10-18 in `repos/*/package.json`) by walrus-ui, walrus-relay,
-  token-deployer-ui and seal-ui (`./http`), the docs site and the dev site. On 2026-10-09 the first four were on
+- Consumed at `^0.0.28` (verified 2026-10-18 in `repos/*/package.json`) by walrus-storage-ui, walrus-relay,
+  token-issuance-ui and sealed-storage-ui (`./http`), the docs site and the dev site. On 2026-10-09 the first four were on
   `^0.0.27` and docs on `^0.0.26`.
-- Depends on `@meddleware/nft-gate-client` `^0.0.17` in 0.0.28 (`^0.0.16` in 0.0.27; audience-bound
+- Depends on `@meddleware/access-gate-gateway-client` `^0.0.17` in 0.0.28 (`^0.0.16` in 0.0.27; audience-bound
   `nft-gate:access:v2` proofs).
-- **0.0.28 (2026-10-10, commit `cdafcd3`)** carries the fix wave: `^0.0.17` of nft-gate-client
+- **0.0.28 (2026-10-10, commit `cdafcd3`)** carries the fix wave: `^0.0.17` of access-gate-gateway-client
   with the shared conflict vocabulary (F15 conflict handling, below), shipped declarations and packaging
   (F18), the Info hardening (F14, F15 attributes, F16), the localnet harness pins (F17) and the localnet
   release gate and alert (F24).
@@ -49,7 +49,7 @@ container image), PROXY, GO, RUST, SITE, PLATFORM.
   (38079631377, "Localnet suite is not red": success), backed by a green `Integration (localnet)` run (38079428163,
   `workflow_dispatch` on `7a26fd7`, the release commit; the localnet suite job passed in 2m16s). The scheduled
   nightly runs of 2026-10-15 to 2026-10-18 are green too.
-- The live gated path is walrus-ui and token-deployer-ui → `runBlobUpload` + `createGatedAccess` →
+- The live gated path is walrus-storage-ui and token-issuance-ui → `runBlobUpload` + `createGatedAccess` →
   nft-gate Workers gateway → operator relay (testnet). Operator-relay paywall e2e PASSED 2026-10-09
   against the live dashboard: a pass was bought on gate `0x316f1bf9…`, consumed, an
   `nft-gate:access:v2` proof was signed, and the upload went through the Worker.
@@ -106,7 +106,7 @@ also devDependencies).
 | --- | --- | --- | --- |
 | `@mysten/sui` | peer `^2.33.2`; dev `^2.35.0` | 2.35.0 | satisfies `@mysten/walrus`'s peer (F9) |
 | `@mysten/walrus` | peer `~1.2.32`; dev `~1.2.32` | 1.2.34 | 1.2.34 is the latest release |
-| `@meddleware/nft-gate-client` | `^0.0.17` (0.0.28; `^0.0.16` in 0.0.27) | 0.0.17 | latest; the only runtime dependency |
+| `@meddleware/access-gate-gateway-client` | `^0.0.17` (0.0.28; `^0.0.16` in 0.0.27) | 0.0.17 | latest; the only runtime dependency |
 | `@mysten/walrus-wasm` | transitive | 0.3.1 | via `@mysten/walrus` |
 
 **Sui SDK / transport:** `SuiGrpcClient` (gRPC-web) for the Walrus client; structural core-API
@@ -130,7 +130,7 @@ clients elsewhere. No JSON-RPC.
 - **Upload relays:**
   - public defaults `https://upload-relay.testnet.walrus.space` and
     `https://upload-relay.mainnet.walrus.space`;
-  - the operator relay is caller-supplied (walrus-ui / token-deployer-ui `VITE_WALRUS_RELAY_*`, gated
+  - the operator relay is caller-supplied (walrus-storage-ui / token-issuance-ui `VITE_WALRUS_RELAY_*`, gated
     by nft-gate).
 - **Aggregators:** `https://aggregator.walrus-testnet.walrus.space` and
   `https://aggregator.walrus-mainnet.walrus.space`.
@@ -163,14 +163,14 @@ clients elsewhere. No JSON-RPC.
 
 - **Networks targetable:** localnet only.
 
-**Location:** `walrus-client/docs/audit/walrus-client-audit.md`. This is a new directory; see the
+**Location:** `walrus-storage-client/docs/audit/walrus-storage-client-audit.md`. This is a new directory; see the
 finding-IDs note above.
 
 ---
 
 ## Executive summary
 
-`@meddleware/walrus-client` is about 1,800 lines in 10 modules, plus a localnet harness (about 800 lines of
+`@meddleware/walrus-storage-client` is about 1,800 lines in 10 modules, plus a localnet harness (about 800 lines of
 shell and Compose). The first pass (2026-10-03, v0.0.25) recorded F7–F22 and changed nothing; between
 2026-10-08 and 2026-10-09 the maintainer released 0.0.26 and 0.0.27, which resolve the actionable
 findings. The 2026-10-09 re-verification re-read every finding against `main` (`83521fc`, v0.0.27); the
@@ -233,7 +233,7 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
 4. **2026-10-10 fix wave (0.0.28, commit `cdafcd3`):** F18 (declarations per D34, `SECURITY.md` in
    `files`, `engines`, lint and a real build in publish, `AGENTS.md`), F14/F15/F16 (relay and storage
    scheme checks, header merge and no redirects, code-only attribute errors with a Blob check,
-   `deletable` and `startEpoch` in listings), the conflict vocabulary of nft-gate-client 0.0.17,
+   `deletable` and `startEpoch` in listings), the conflict vocabulary of access-gate-gateway-client 0.0.17,
    F24 (alert issue on a red nightly and a release gate on the localnet run) and the F17 pins. Open
    after it: F13 item 2 (a tipped, gated localnet relay); the F17 proof run was done on 2026-10-10 (green on the
    release commit, F17 RESOLVED); nothing above Info.
@@ -241,7 +241,7 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
    on 2026-10-21 and 2026-10-22 because the floating `mysten/sui-tools:mainnet` node image moved to a gRPC-only
    build and the bootstrap's JSON-RPC WAL lookup failed silently. The node image is pinned, the lookup uses the
    Sui CLI, and funding fails fast (commit `75cd12a`, green run 39766927302).
-6. **2026-10-22 (0.0.30):** F26 (Medium, new, RESOLVED). The gated flow built the access proof with a synthetic `expiresAt: 0`; `@meddleware/nft-gate-client` 0.0.18 refuses an expired challenge before the
+6. **2026-10-22 (0.0.30):** F26 (Medium, new, RESOLVED). The gated flow built the access proof with a synthetic `expiresAt: 0`; `@meddleware/access-gate-gateway-client` 0.0.18 refuses an expired challenge before the
    wallet prompt, so the flow would have failed on every gated upload once it took 0.0.18. 0.0.30 passes the gateway's real challenge expiry (commit `ed1257f`), pinned by a regression test.
 
 ---
@@ -265,9 +265,9 @@ findings. The 2026-10-09 re-verification re-read every finding against `main` (`
 
 | Actor / source | Controls | Bounded by |
 | --- | --- | --- |
-| Dependency authors | `@mysten/walrus` (+ wasm), `@mysten/sui`, `@meddleware/nft-gate-client` | lockfile; `npm audit` in CI and publish; peer ranges declared and checked by `npm ls --all` in CI (F9); weekly grouped Dependabot. |
+| Dependency authors | `@mysten/walrus` (+ wasm), `@mysten/sui`, `@meddleware/access-gate-gateway-client` | lockfile; `npm audit` in CI and publish; peer ranges declared and checked by `npm ls --all` in CI (F9); weekly grouped Dependabot. |
 | Registry | tarballs | lockfile integrity; provenance on publish |
-| Relay responses | tip config, upload result, errors (`409 redeemed`) | SDK tip cap; `gatewayConflictCodeOf` reads the gateway's `code` through nft-gate-client (bounded cause depth; no message matching) |
+| Relay responses | tip config, upload result, errors (`409 redeemed`) | SDK tip cap; `gatewayConflictCodeOf` reads the gateway's `code` through access-gate-gateway-client (bounded cause depth; no message matching) |
 | Aggregator / publisher responses | bytes, JSON, errors | https, timeouts, read cap, 64 KiB cap on publisher bodies, blob-id regex, redirects refused (F11) |
 | Full node | owned-object pages, object JSON | page bound; exact type; strict field parsing |
 | Caller inputs | epochs, tip cap, hosts, storage scheme, blob ids | epochs and tip cap validated before any prompt (F10); relay host must be https off-loopback and `http` storage nodes only on localnet (F14) |
@@ -324,9 +324,9 @@ Critical / High / Medium / Low / Info / Positive (unchanged across the corpus).
 **Cross-repo evidence (read-only):**
 
 - nft-gate `gateway-workers` (`CHALLENGE_TTL_SECS = 300`, `wrangler.toml:59`; `config.ts:204`);
-- walrus-ui `WalrusView.vue:133-168` (`findExistingCopy`, pending-certify wiring);
-- token-deployer-ui CLAUDE.md (live gated-relay e2e passed 2026-10-01; relay freshness one hour);
-- `@meddleware/nft-gate-client` 0.0.15 at the first pass, 0.0.16 in 0.0.27, 0.0.17 in 0.0.28 (challenge
+- walrus-storage-ui `WalrusStorageView.vue:133-168` (`findExistingCopy`, pending-certify wiring);
+- token-issuance-ui CLAUDE.md (live gated-relay e2e passed 2026-10-01; relay freshness one hour);
+- `@meddleware/access-gate-gateway-client` 0.0.15 at the first pass, 0.0.16 in 0.0.27, 0.0.17 in 0.0.28 (challenge
   timeout, audience-bound proof encoding, the gateway's conflict vocabulary, `gatewayOrigin` errors that
   no longer echo their input);
 - nft-gate `gateway-workers` and `gateway-rust` (both always send `code: 'redeemed' | 'leased'` on a 409);
@@ -347,7 +347,7 @@ Critical / High / Medium / Low / Info / Positive (unchanged across the corpus).
 | `npm audit --audit-level=high` | 0 vulnerabilities |
 | `npm ls --all` | exit 0 (sui 2.35.0 and walrus 1.2.34 satisfy the declared peers). 2026-10-03: `ELSPROBLEMS`, `@mysten/sui@2.33.1` invalid (F9) |
 | `npm pack --dry-run` | 2026-10-10 (0.0.28 tree): 25 files, 37.7 kB (`src/**`, `dist/*.d.ts`, `SECURITY.md`, `CHANGELOG.md`, `README.md`, `LICENSE`, `package.json`); no `localnet/`. 2026-10-09 (0.0.27): 14 files, no `SECURITY.md`, no declarations (F18). |
-| `npm view @meddleware/walrus-client` | latest 0.0.27; SLSA v1 provenance attestation present on 0.0.27 (2026-10-18: `latest` is 0.0.28, published 2026-10-10T19:25Z, attestation present) |
+| `npm view @meddleware/walrus-storage-client` | latest 0.0.27; SLSA v1 provenance attestation present on 0.0.27 (2026-10-18: `latest` is 0.0.28, published 2026-10-10T19:25Z, attestation present) |
 | `shellcheck -x -P SCRIPTDIR localnet/scripts/*.sh localnet/files/*.sh` | 2026-10-10: clean (0.11.0, fetched through npm for this pass). Still a Node CI job. |
 | `npx vitest run --coverage` | not re-measured (plugin not installed). 2026-10-03 (historical): 90.36% statements / 85.01% branches / 86.79% functions / 93.18% lines; `manage.ts` 45.83%, `upload.ts` 73.33%. 0.0.26 added tests for exactly those gaps (F13) |
 | `npm run test:integration` (localnet testbed) | **not run here** (no Docker access without `sudo`; disk full on 2026-10-10). Maintainer run log: red from 2026-10-02 (F23), **PASS again on 2026-10-09** after the 0.0.27 fix; **PASS on the 0.0.28 release commit `7a26fd7`, 2026-10-10, run 38079428163** (dispatched by the maintainer) |
@@ -416,7 +416,7 @@ The working tree was not modified by this pass beyond this file (`docs/` is untr
 3. **The app's retry pays again.** Its only recovery is to call `runBlobUpload` again, which by design
    **registers fresh**: storage, tip and gas are paid again. The first Blob stays owned, uncertified
    and never uploaded.
-4. **walrus-ui's precheck cannot see it.** `findExistingCopy` only reports certified copies, or
+4. **walrus-storage-ui's precheck cannot see it.** `findExistingCopy` only reports certified copies, or
    pending copies that *were* uploaded (from the pending-certify store), so it does not detect the
    orphan.
 5. **Gated uploads hit this routinely.** `access.token(false)` fetches the gateway challenge
@@ -460,10 +460,10 @@ same-registration retry is possible; it is simply not offered for other failures
 
 - **Token minted after register.** `attempt()` calls `access.token()` right before each `flow.upload`, so a slow encode or wallet approval no longer outlives the gateway challenge (300 s). The single-use consume is still spent and persisted before register (`access.prepare()`).
 - **Same-registration retry, bounded.** `uploadWithRetries` retries up to `UPLOAD_ATTEMPTS = 3` (backoff `2 s × n`) while `now - registeredAt <= REGISTRATION_FRESH_MS` (50 minutes, inside the relay's one-hour freshness). It retries for a `409 redeemed` (spends a new use), one rejected resumed consume (403), a `409 leased`, a stale proof (401/403 about nonce or signature), 429, 5xx and network errors (fresh token each time, no new consume). Any other 4xx is final.
-- **`uploadRetry`.** When attempts run out inside the window, the thrown error carries `getUploadRetry(err)` (the counterpart of `certifyRetry`). It is consumed by token-deployer-ui (`IconPicker.vue`) and walrus-relay (`WalrusUpload.vue`, which walrus-ui uses).
+- **`uploadRetry`.** When attempts run out inside the window, the thrown error carries `getUploadRetry(err)` (the counterpart of `certifyRetry`). It is consumed by token-issuance-ui (`IconPicker.vue`) and walrus-relay (`WalrusUpload.vue`, which walrus-storage-ui uses).
 - **Tests (`tests/flow.test.ts`):** "spends the consume before register, mints the token AFTER register, and threads it into the relay"; "a relay 5xx or a network error retries on the same registration with a fresh token, no new consume"; "an expired-challenge rejection retries on the same registration with a fresh token"; "bounds the retries and hands the caller an uploadRetry on the same registration"; "does not retry once the registration is too old for the relay"; "does not retry a rejection that is not about the proof"; "an open relay also retries transient failures on the same registration".
 - **Decision on OQ1 (b), persisting "registered, not uploaded" state: not adopted.** Register is never resumed across page loads: the tip relay embeds the tip and a per-encode nonce in the register transaction and rejects a reused one as "the received transaction is too old", and the SDK flow that holds the encoded slivers lives in memory. So `uploadRetry` is an in-memory closure, and the flow's invariant stays "register fresh on every new attempt" (CLAUDE.md).
-- **Residual, ACCEPTED-RISK (same reason):** closing or reloading the page between register and a landed upload still orphans one paid, uncertified Blob (permanent, so not deletable), and walrus-ui's `findExistingCopy` does not report it. The window is now the minutes of an interrupted session, not every transient relay error.
+- **Residual, ACCEPTED-RISK (same reason):** closing or reloading the page between register and a landed upload still orphans one paid, uncertified Blob (permanent, so not deletable), and walrus-storage-ui's `findExistingCopy` does not report it. The window is now the minutes of an interrupted session, not every transient relay error.
 
 ### F8 — A stored consume digest is never validated or expired; a bad one blocks gated uploads indefinitely
 
@@ -496,7 +496,7 @@ it is cleared only by `uploaded()` or `forceFresh`, which only `isRedeemedConfli
   bounded.
 - Add tests.
 
-**Remediation / evidence (2026-10-09):** RESOLVED in 0.0.26 (`d1bb9cc`). `readStoredConsume` (`src/flow.ts`) reads `{ digest, nftId, savedAt }` and reuses it only if it is under 4 KiB, a valid transaction digest (`isTransactionDigest` from nft-gate-client), for the same `nftId`, not older than `CONSUME_RESUME_MAX_AGE_MS` (4 days; the gateways refuse a consume older than 5) and not more than 60 s in the future. Anything else is removed and a new consume is spent. A consume result without a valid digest is refused instead of stored. A resumed consume the gateway rejects (403 "single-use consume") is dropped and consumed anew once (`isConsumeRejected`), which is the recovery path the finding asked for.
+**Remediation / evidence (2026-10-09):** RESOLVED in 0.0.26 (`d1bb9cc`). `readStoredConsume` (`src/flow.ts`) reads `{ digest, nftId, savedAt }` and reuses it only if it is under 4 KiB, a valid transaction digest (`isTransactionDigest` from access-gate-gateway-client), for the same `nftId`, not older than `CONSUME_RESUME_MAX_AGE_MS` (4 days; the gateways refuse a consume older than 5) and not more than 60 s in the future. Anything else is removed and a new consume is spent. A consume result without a valid digest is refused instead of stored. A resumed consume the gateway rejects (403 "single-use consume") is dropped and consumed anew once (`isConsumeRejected`), which is the recovery path the finding asked for.
 
 Tests (`tests/flow.test.ts`): "drops a stored value that is malformed, for another pass, stale, or from the future, and consumes anew"; "refuses a consume result without a valid digest instead of storing it"; "a rejected RESUMED consume is dropped and consumed anew, once"; "consumes a use bound to the challenge nonce and persists {digest, nftId, savedAt} before signing".
 
@@ -513,7 +513,7 @@ Not adopted: the optional on-chain confirmation of the stored digest before reus
 - `@mysten/walrus` 1.2.32 declares the peer `@mysten/sui ^2.33.2`. The lockfile installs 2.33.1.
 - `npm ls` fails with `ELSPROBLEMS … invalid: "^2.33.2" from node_modules/@mysten/walrus`.
 - `legacy-peer-deps=true` hides this at install time.
-- Its comment ("Safe here: walrus-client has no peer deps of its own that this could mask") is wrong:
+- Its comment ("Safe here: walrus-storage-client has no peer deps of its own that this could mask") is wrong:
   it masks the peers of dependencies.
 - So the unit tests, and any consumer that inherits this resolution, run an SDK pair that upstream
   declares incompatible.
@@ -534,7 +534,7 @@ Not adopted: the optional on-chain confirmation of the stored digest before reus
 4. Add `npm ls --all >/dev/null` to Node CI.
 5. Record this in the ADR-0001 shared-dependency matrix.
 
-**Remediation / evidence (2026-10-09):** RESOLVED in 0.0.26 (`d1bb9cc`): `@mysten/sui` (`^2.33.2`) and `@mysten/walrus` (`~1.2.32`) are `peerDependencies` and also devDependencies (`^2.35.0`, `~1.2.32`); `.npmrc` is deleted, so `legacy-peer-deps` no longer hides anything; `npm ls --all >/dev/null` runs in `node-ci.yml` and in the `verify` job of `npm-publish.yml`. Checked 2026-10-09: `npm ls --all` exits 0 (installed sui 2.35.0, walrus 1.2.34, nft-gate-client 0.0.16) and `npm audit --audit-level=high` reports 0. The lockfile no longer pins the invalid pair.
+**Remediation / evidence (2026-10-09):** RESOLVED in 0.0.26 (`d1bb9cc`): `@mysten/sui` (`^2.33.2`) and `@mysten/walrus` (`~1.2.32`) are `peerDependencies` and also devDependencies (`^2.35.0`, `~1.2.32`); `.npmrc` is deleted, so `legacy-peer-deps` no longer hides anything; `npm ls --all >/dev/null` runs in `node-ci.yml` and in the `verify` job of `npm-publish.yml`. Checked 2026-10-09: `npm ls --all` exits 0 (installed sui 2.35.0, walrus 1.2.34, access-gate-gateway-client 0.0.16) and `npm audit --audit-level=high` reports 0. The lockfile no longer pins the invalid pair.
 
 ADR-0001's baseline text still reads `@mysten/sui ^2.33.1` and walrus 1.2.31; this package's floor (`^2.33.2`) is above it for the reason `@mysten/walrus` requires, so there is no deviation to flag; the ADR text itself is outside this audit.
 
@@ -584,7 +584,7 @@ Residual, ADJUDICATED: the tip cap stays a JavaScript `number` (TS-M3 asks for `
 - **`readBlob` trusts the aggregator.** `strict_consistency_check=true` asks the aggregator to check
   the encoding before serving, but the client cannot tell whether it did. No blob id is re-derived
   locally, so a hostile or compromised aggregator can return arbitrary bytes for a blob id. For Seal
-  ciphertext (seal-ui) this is caught downstream by AEAD and header checks; for any other use it is
+  ciphertext (sealed-storage-ui) this is caught downstream by AEAD and header checks; for any other use it is
   not. WAL-M6.
 - **`storeBlobViaPublisher` drops the `alreadyCertified` details.** It returns only the blob id.
   - When the publisher answers `alreadyCertified`, **no Blob object is sent to `sendObjectTo`**, so the
@@ -669,7 +669,7 @@ value it does not use.
 - **The auth hook is proven only against a mock.** The relay-auth tests mock `@mysten/walrus` and
   assert the options passed to it. That `UploadRelayClient` actually calls the supplied `fetch` — the
   property CLAUDE.md says to re-verify on every SDK upgrade — is not proven in this repo. It was
-  proven live elsewhere: token-deployer-ui `e2e:walrus` through the operator relay, 2026-10-01.
+  proven live elsewhere: token-issuance-ui `e2e:walrus` through the operator relay, 2026-10-01.
 - **The localnet relay is too permissive.** It runs with no tip, a 10-hour freshness window and no
   gateway. The nightly integration suite therefore never exercises:
   - tip enforcement;
@@ -692,7 +692,7 @@ value it does not use.
 
 *Note (2026-10-22):* the localnet WAL funding that the lifecycle suite depends on broke silently on 2026-10-21 (F25); the suite now checks its own funding before it starts, which does not change the F13 disposition.
 
-Item 2 is not done: `localnet/config/relay.yaml` is still `tip_config: !no_tip` with `tx_freshness_threshold_secs: 36000`, and `relay.compose.yml` has no gateway (both unchanged since 2026-09-30). Compensating evidence: the tipped, gated operator-relay path was exercised live on 2026-10-09 (paywall e2e through the Worker, `nft-gate:access:v2` proof, upload) and by token-deployer-ui `e2e:walrus`. The nightly localnet suite therefore still does not cover tip enforcement or the gated path, which stays recorded in C.2.
+Item 2 is not done: `localnet/config/relay.yaml` is still `tip_config: !no_tip` with `tx_freshness_threshold_secs: 36000`, and `relay.compose.yml` has no gateway (both unchanged since 2026-09-30). Compensating evidence: the tipped, gated operator-relay path was exercised live on 2026-10-09 (paywall e2e through the Worker, `nft-gate:access:v2` proof, upload) and by token-issuance-ui `e2e:walrus`. The nightly localnet suite therefore still does not cover tip enforcement or the gated path, which stays recorded in C.2.
 
 ### F14 — `relayAuthFetch` and client-construction edge cases
 
@@ -739,11 +739,11 @@ Blob object exists; add tests.
 **Remediation / evidence (2026-10-09, then 2026-10-10):** Re-read 2026-10-09: the message match was unchanged and accepted (a wrong id fails on-chain with a clear error and no funds at risk beyond the failed attempt). RESOLVED in 0.0.28 (2026-10-10, commit `cdafcd3`), as the first pass proposed:
 
 - `isMissingFieldError` classifies by the error `code` only (`notExists`, `dynamicFieldNotFound`); the message fallback is gone.
-- Before the first-write fallback in `setBlobAttributes`, and before `readBlobAttributes` returns `null`, `assertBlobObject` confirms the object exists and is exactly the Walrus Blob type (`getBlobType()`, normalised). A wrong id now throws `walrus-client: no Walrus Blob object <id>` (or `not a Walrus Blob`) instead of reporting "no attributes" or taking the fallback path. The installed SDK (1.2.34) returns `null` itself for a missing field, so the check also runs on that `null`.
+- Before the first-write fallback in `setBlobAttributes`, and before `readBlobAttributes` returns `null`, `assertBlobObject` confirms the object exists and is exactly the Walrus Blob type (`getBlobType()`, normalised). A wrong id now throws `walrus-storage-client: no Walrus Blob object <id>` (or `not a Walrus Blob`) instead of reporting "no attributes" or taking the fallback path. The installed SDK (1.2.34) returns `null` itself for a missing field, so the check also runs on that `null`.
 - Verified read-only against live testnet on 2026-10-10: a real Blob with no attributes returns `null`, a random id throws "no Walrus Blob object", and `0x6` throws "not a Walrus Blob".
 - Tests (`tests/manage.test.ts`): "readBlobAttributes returns null for a Blob without a metadata field…", "…throws for a wrong object id instead of reporting 'no attributes'", "does not take an error for a missing field because its message says so", "setBlobAttributes does not take the fallback path for a wrong object id", "…because of message text alone"; localnet assertion in `lifecycle.integration.test.ts` (not run in the fix wave).
 
-**Conflict classification (same family, 0.0.28):** `isRedeemedConflict` / `isLeasedConflict` in `src/flow.ts` had their own message-regex fallback on the 409 text. They now use nft-gate-client 0.0.17's exported vocabulary (`GATEWAY_STATUS.conflict`, `parseGatewayError`, `GATEWAY_CONFLICT_CODES`) through `gatewayConflictCodeOf`, and no longer inspect message text: both gateways always send `code: 'redeemed' | 'leased'` (`gateway-workers/src/redemption.ts`, `gateway-rust/src/main.rs`), and the SDK's relay client attaches the parsed JSON body as `error`. Tests (`tests/flow.test.ts`, "isRedeemedConflict"): the real SDK `StorageNodeAPIError.generate(409, …)` is recognised; unknown codes, a missing or malformed body, a wrong status and message-only forms are not.
+**Conflict classification (same family, 0.0.28):** `isRedeemedConflict` / `isLeasedConflict` in `src/flow.ts` had their own message-regex fallback on the 409 text. They now use access-gate-gateway-client 0.0.17's exported vocabulary (`GATEWAY_STATUS.conflict`, `parseGatewayError`, `GATEWAY_CONFLICT_CODES`) through `gatewayConflictCodeOf`, and no longer inspect message text: both gateways always send `code: 'redeemed' | 'leased'` (`gateway-workers/src/redemption.ts`, `gateway-rust/src/main.rs`), and the SDK's relay client attaches the parsed JSON body as `error`. Tests (`tests/flow.test.ts`, "isRedeemedConflict"): the real SDK `StorageNodeAPIError.generate(409, …)` is recognised; unknown codes, a missing or malformed body, a wrong status and message-only forms are not.
 
 ### F16 — `fetchOwnedWalrusBlobs` omits `deletable`
 
@@ -802,14 +802,14 @@ Checks run: `bash -n` and shellcheck 0.11.0 clean; `lib.sh` evaluated with a stu
 
 **Severity:** Info   **Disposition:** RESOLVED (0.0.28, commit `cdafcd3`; OQ3 decided by fleet decision D34)
 
-- **Declarations:** no `.d.ts` and no `types` condition (as in seal-client; unlike the declaration-only
+- **Declarations:** no `.d.ts` and no `types` condition (as in sealed-storage-client; unlike the declaration-only
   siblings).
 - **`SECURITY.md`** is not in `files`.
 - **Publish verification** uses `--if-present` and has no lint step.
 - **No `engines`** field.
 - **`@mysten/walrus`** is pinned `~1.2.32`; 1.2.33 is available. The tilde blocks patch releases
   across minors only, so it is adequate.
-- **`AGENTS.md` is stale.** It says "Version `0.0.1`", lists the layout as `packages/walrus-client/`,
+- **`AGENTS.md` is stale.** It says "Version `0.0.1`", lists the layout as `packages/walrus-storage-client/`,
   and omits `flow.ts`, `http.ts` and `node.ts`.
 - **Shellcheck** runs in Node CI (positive). The unit suite and the localnet suite are separate.
 
@@ -818,9 +818,9 @@ publish verification; refresh `AGENTS.md`; decide on declarations (OQ3).
 
 **Remediation / evidence (2026-10-09, then 2026-10-10):** Re-read 2026-10-09 against 0.0.27: declarations, `SECURITY.md` in `files`, the publish `verify` lint and `--if-present`, `engines` and `AGENTS.md` were still open and deferred to the 0.2.0 gate. RESOLVED in 0.0.28 (2026-10-10, commit `cdafcd3`). OQ3 needed no maintainer choice: fleet decision D34 (`LENS_GROUNDING_LOG.md`) says every SDK package ships `.d.ts` like its siblings, and the pre-v0.2 policy allows the change in a patch.
 
-- **Declarations:** `tsconfig.build.json` (declarations only, `src` to `dist`, as in nft-gate-client); `npm run build`; `prepublishOnly` runs it; every `exports` entry is `{ types: ./dist/<name>.d.ts, default: ./src/<name>.ts }`. The package still ships its source (CLAUDE.md invariant updated: no JavaScript output).
+- **Declarations:** `tsconfig.build.json` (declarations only, `src` to `dist`, as in access-gate-gateway-client); `npm run build`; `prepublishOnly` runs it; every `exports` entry is `{ types: ./dist/<name>.d.ts, default: ./src/<name>.ts }`. The package still ships its source (CLAUDE.md invariant updated: no JavaScript output).
 - **`files`:** `src`, `dist`, `CHANGELOG.md`, `SECURITY.md` (`npm pack --dry-run`: 25 files, 37.7 kB).
-- **`engines`:** `node` `>=24` (fleet decision D41, as nft-gate-client 0.0.17).
+- **`engines`:** `node` `>=24` (fleet decision D41, as access-gate-gateway-client 0.0.17).
 - **CI:** `--if-present` is gone from both workflows (the Node CI commit `b39aa15` had already dropped it for tests; the build step now exists); the publish `verify` job runs audit, `npm ls --all`, type-check, **lint**, unit tests and the **build**, and Node CI builds too.
 - **`AGENTS.md`:** rewritten for the real layout (flow, http, node, limits, tests, localnet, CI), version policy, Node 24 and the release checklist, including the localnet gate.
 - Test: `tests/package.test.ts` pins the `types`/`default` pair for each entry point, the `files` list, the declarations-only build and `engines`.
@@ -853,7 +853,7 @@ a gateway endpoint that accepts the original nonce, and this module changes with
   over non-loopback http.
 - `globalThis.fetch` is never patched.
 - The token never reaches RPC, storage nodes or aggregators (they use other fetches).
-- `createRelayAccessToken` and the flow use nft-gate-client's challenge fetch, which has a 10 s
+- `createRelayAccessToken` and the flow use access-gate-gateway-client's challenge fetch, which has a 10 s
   timeout, an https requirement and a validated response; since 0.0.26 the signed message is the
   audience-bound `nft-gate:access:v2` (relay origin, gate, network, nonce, consume digest).
 - A hermetic test now proves the real SDK calls the hook (`tests/relay-auth-sdk.test.ts`, F13).
@@ -906,8 +906,8 @@ function returned an empty list on a live network. The unit tests used one-digit
 green. The first-pass audit (2026-10-03) read this code as correct (F22 "skips malformed entries") and
 missed it, because its own run could not execute the localnet suite.
 
-**Impact:** every consumer that lists a wallet's blobs (walrus-ui `useOwnedBlobs` / `WalrusView.vue`,
-token-deployer-ui `WalrusBlobBrowser.vue`) saw an empty list from 2026-10-02 until the fix, so the
+**Impact:** every consumer that lists a wallet's blobs (walrus-storage-ui `useOwnedBlobs` / `WalrusStorageView.vue`,
+token-issuance-ui `WalrusBlobBrowser.vue`) saw an empty list from 2026-10-02 until the fix, so the
 extend and existing-copy flows built on those listings had nothing to act on. No funds were at risk
 (read-only), and 0.0.23–0.0.26 shipped with it.
 
@@ -955,7 +955,7 @@ and delivery did not.
 
 **Evidence:** nightly runs 39568220105 (2026-10-21) and 39746924799 (2026-10-22) on `9e3d204`, the same commit as the last green nightly 39391809949 (2026-10-20): the pulled `sui-tools` layer sets differ between the three runs while the walrus-service digest, the upstream checkout (`a1899b9`) and the access-gate ref are identical. Required 16 = (storage 5 × 3 epochs + write 1) × 1 unit. Reproduced on rootless podman against `mysten/sui-tools:mainnet` (1.82.3): `walrus-deploy` succeeds, the admin holds one WAL coin of 4.997996e18 FROST, `sui client balance --with-coins --json` (CLI 1.81.0) lists it over gRPC, JSON-RPC returns 404.
 
-**Impact:** the whole write-side suite was red for two nights and the `localnet-gate` would have refused a tag (it did its job). walrus-relay's integration workflow shares this harness (`repos/walrus-client` at `main`) and logged the same "no WAL coin found" warning on 2026-10-22, but stayed green because its suite makes no paid write.
+**Impact:** the whole write-side suite was red for two nights and the `localnet-gate` would have refused a tag (it did its job). walrus-relay's integration workflow shares this harness (`repos/walrus-storage-client` at `main`) and logged the same "no WAL coin found" warning on 2026-10-22, but stayed green because its suite makes no paid write.
 
 **Remediation / evidence (2026-10-22):**
 
@@ -971,14 +971,14 @@ and delivery did not.
 **Severity:** Medium   **Disposition:** RESOLVED (0.0.30, `ed1257f`, 2026-10-22; pinned by `tests/flow.test.ts`)
 **Where:** `src/flow.ts` (`GatedAccessPorts.fetchChallenge`, `createGatedAccess`).
 
-**Issue:** `createGatedAccess` called `buildAccessProof({ challenge: { nonce, expiresAt: 0 }, … })`: it kept only the nonce of the gateway's challenge and invented an expiry of 0. `@meddleware/nft-gate-client` 0.0.18 (F14 of that audit)
+**Issue:** `createGatedAccess` called `buildAccessProof({ challenge: { nonce, expiresAt: 0 }, … })`: it kept only the nonce of the gateway's challenge and invented an expiry of 0. `@meddleware/access-gate-gateway-client` 0.0.18 (F14 of that audit)
 checks the address and the challenge expiry before it asks the wallet to sign, and refuses an expired challenge. With the synthetic 0, every gated upload would fail at the proof step after the dependency moved to 0.0.18.
 
-**Impact:** no funds at risk (the check fails before the wallet prompt and before any consume is wasted on the proof), but the paywalled upload path of every consumer (walrus-ui, token-deployer-ui, the relay UI, seal-ui) would have been unusable on
+**Impact:** no funds at risk (the check fails before the wallet prompt and before any consume is wasted on the proof), but the paywalled upload path of every consumer (walrus-storage-ui, token-issuance-ui, the relay UI, sealed-storage-ui) would have been unusable on
 the dependency bump; the nightly localnet harness exercises the flow and would have been red. Found while moving the package to 0.0.18 (0.0.29 and earlier depended on the 0.0.17 client, which has no expiry check, so no released version of this package combined the two).
 
 **Remediation / evidence:** `fetchChallenge` is typed `{ nonce: string; expiresAt: number }` and the flow passes `challenge.expiresAt` through unchanged. Test: `tests/flow.test.ts` "passes the gateway challenge expiry through, and never prompts the wallet on an expired
-challenge" (a fresh challenge yields a token; an expired one rejects with /expired/ and `sign` is never called). The localnet nightly harness was fixed the same day for an unrelated cause (F25). Released as 0.0.30 with `nft-gate-client` `^0.0.18`.
+challenge" (a fresh challenge yields a token; an expired one rejects with /expired/ and `sign` is never called). The localnet nightly harness was fixed the same day for an unrelated cause (F25). Released as 0.0.30 with `access-gate-gateway-client` `^0.0.18`.
 
 ---
 
@@ -1016,7 +1016,7 @@ exit 0 (2026-10-09; the 2026-10-03 invalid peer is fixed, F9).
 | `@mysten/walrus` | peer and dev `~1.2.32` (1.2.34) | every Walrus operation | clean | relay-auth wiring is re-verified on every upgrade by `relay-auth-sdk.test.ts` (F13) |
 | `@mysten/walrus-wasm` | transitive (0.3.1) | encoding | clean | lazy-loaded through `./flow` |
 | `@mysten/sui` | peer `^2.33.2`, dev `^2.35.0` (2.35.0) | gRPC client, transactions | clean | satisfies walrus's peer; a peer, so hosts own the single copy (F9) |
-| `@meddleware/nft-gate-client` | `^0.0.17` (0.0.17; `^0.0.16` in 0.0.27) | challenge / proof / conflict vocabulary | provenance attested | wire protocol (`nft-gate:access:v2`) shared with both gateways |
+| `@meddleware/access-gate-gateway-client` | `^0.0.17` (0.0.17; `^0.0.16` in 0.0.27) | challenge / proof / conflict vocabulary | provenance attested | wire protocol (`nft-gate:access:v2`) shared with both gateways |
 | Upload relay (operator / public) | caller / defaults | uploads — **fails closed** | n/a | tip via SDK cap |
 | Aggregator | defaults / caller | reads — fails closed (no bytes) | n/a | trusted for content, documented (F11) |
 | HTTP publisher | caller | `./http` stores — fails closed | n/a | publisher pays; user owns via `send_object_to` |
@@ -1028,7 +1028,7 @@ exit 0 (2026-10-09; the 2026-10-03 invalid peer is fixed, F9).
 | --- | --- | --- | --- |
 | `@mysten/sui` | — | `^2.35.0` | `^2.33.2` |
 | `@mysten/walrus` | — | `~1.2.32` | `~1.2.32` |
-| `@meddleware/nft-gate-client` | `^0.0.17` | — | — |
+| `@meddleware/access-gate-gateway-client` | `^0.0.17` | — | — |
 | `typescript` / `vitest` / `vite` | — | `^6.0.0` / `~5.0.2` / `^8.1.5` | — |
 
 No deviation from the ADR-0001 baseline (its `^2.33.1` floor is below this peer floor). The `^0.0.17`
@@ -1039,8 +1039,8 @@ range on the first-party dependency resolves to exactly `0.0.17`, as the version
 | Format | Producer | Consumer | Test / vector |
 | --- | --- | --- | --- |
 | Relay tip transaction (register PTB input 0 + tip transfer) | `@mysten/walrus` | relay | SDK-owned; localnet relay has no tip (F13); tipped path proven live 2026-10-09 |
-| Access proof (`Authorization: Bearer base64(JSON{address, nonce, signature, consumeDigest?})`, signature over the `nft-gate:access:v2` message) | nft-gate-client `buildAccessProof` / `encodeAccessProof` (via `createGatedAccess` / `createRelayAccessToken`) | nft-gate gateways | nft-gate-client's published vectors (nft-gate-client audit); `flow.test.ts` asserts the exact signed message |
-| Relay `409` conflict (`code: 'redeemed' \| 'leased'`) | gateway | `gatewayConflictCodeOf` / `isRedeemedConflict` / `isLeasedConflict`, via nft-gate-client's `GATEWAY_CONFLICT_CODES` | flow tests (the real SDK error with the gateway body, cause chain, unknown codes; no message forms since 0.0.28) |
+| Access proof (`Authorization: Bearer base64(JSON{address, nonce, signature, consumeDigest?})`, signature over the `nft-gate:access:v2` message) | access-gate-gateway-client `buildAccessProof` / `encodeAccessProof` (via `createGatedAccess` / `createRelayAccessToken`) | nft-gate gateways | access-gate-gateway-client's published vectors (access-gate-gateway-client audit); `flow.test.ts` asserts the exact signed message |
+| Relay `409` conflict (`code: 'redeemed' \| 'leased'`) | gateway | `gatewayConflictCodeOf` / `isRedeemedConflict` / `isLeasedConflict`, via access-gate-gateway-client's `GATEWAY_CONFLICT_CODES` | flow tests (the real SDK error with the gateway body, cause chain, unknown codes; no message forms since 0.0.28) |
 | Publisher response (`newlyCreated.blobObject.{blobId,id}` / `.resource.endEpoch` / `alreadyCertified.{blobId,endEpoch}`) | Walrus publisher | `storeBlobViaPublisher` | http tests; the fields are returned in `PublishResult` (F11) |
 
 ### B.WAL-2 Economics & operations
@@ -1050,14 +1050,14 @@ range on the first-party dependency resolves to exactly `0.0.17`, as the version
 | Tip ceiling | 0.005 SUI default since 0.0.29 (~8× the operator relay's worst case at 100 MiB under the D57 tip); app-overridable |
 | WAL funding | the user's wallet on the relay path; the publisher's on `./http` |
 | Expiry monitoring / extension | `extendBlobLifetime*` and `estimateStorageCost` exist; monitoring is the apps' concern |
-| Mainnet relay / aggregator / publisher | public relay and aggregator defaults exist; no publisher (none public on mainnet; seal-ui requires an operator one) |
+| Mainnet relay / aggregator / publisher | public relay and aggregator defaults exist; no publisher (none public on mainnet; sealed-storage-ui requires an operator one) |
 | Orphaned registrations | not tracked; reduced to a reload between register and a landed upload (F7, ACCEPTED-RISK residual) |
 
 ### B.2 Publish authority & CI
 
 | Authority / secret | Where | Custody | Gates |
 | --- | --- | --- | --- |
-| npm publish `@meddleware/walrus-client` | `npm-publish.yml` (tag `v*`) | OIDC trusted publisher; `--provenance` | releases |
+| npm publish `@meddleware/walrus-storage-client` | `npm-publish.yml` (tag `v*`) | OIDC trusted publisher; `--provenance` | releases |
 | `GITHUB_TOKEN` (integration) | `integration.yml` | `contents: read`; the `alert` job `issues: write` only | suiup API rate limit; opens or closes the red-nightly issue |
 | `GITHUB_TOKEN` (release gate) | `npm-publish.yml` `localnet-gate` | `actions: read`, `contents: read` | reads the localnet run list; blocks `publish-npm` |
 | Localnet deployer key | committed (`lib.sh`) | public by design | localnet only (F17) |
@@ -1117,13 +1117,13 @@ historical until a maintainer re-runs `vitest --coverage`.
 | --- | --- | --- | --- |
 | Unit | 10 files, 128 tests (adds `package.test.ts` and `localnet-gate.test.ts` in 0.0.28) | — | Node CI (push/PR) and publish |
 | Localnet integration | `tests/integration/lifecycle.integration.test.ts`: raw upload and read, content addressing, extend, attributes, owned listing | `.env.localnet` (`WALRUS_TEST_SECRET_KEY` …) | nightly and manual (`integration.yml`); alerts on red and gates the release via `localnet-gate` (F24) |
-| Testnet e2e (gated relay) | — (in token-deployer-ui `e2e:walrus`, walrus-ui; paywall e2e 2026-10-09) | manual | elsewhere |
+| Testnet e2e (gated relay) | — (in token-issuance-ui `e2e:walrus`, walrus-storage-ui; paywall e2e 2026-10-09) | manual | elsewhere |
 
 ### C.2 Hermetic vs. live paths
 
 | Path | Hermetic? | Deferred to | Tracking |
 | --- | --- | --- | --- |
-| SDK honours the relay `fetch` hook | yes (real SDK, stubbed `fetch`) | also live: token-deployer-ui `e2e:walrus` (2026-10-01), paywall e2e (2026-10-09) | F13 |
+| SDK honours the relay `fetch` hook | yes (real SDK, stubbed `fetch`) | also live: token-issuance-ui `e2e:walrus` (2026-10-01), paywall e2e (2026-10-09) | F13 |
 | Relay tip enforcement | no | live only (localnet relay is tip-free) | F13 |
 | Committee behaviour, certification, real blob-id shape | no | localnet lifecycle (nightly; caught F23) | F23, F24 |
 | Gated proof acceptance, redemption, challenge expiry | no (the retry logic is hermetic) | testnet e2e in the apps (paywall e2e PASS 2026-10-09) | F7, F13 |
@@ -1143,7 +1143,7 @@ historical until a maintainer re-runs `vitest --coverage`.
 
 ### pre-testnet *(in use on testnet; unmet items are retroactive)*
 
-- [x] gated-relay upload proven end to end (token-deployer-ui 2026-10-01; paywall e2e through the Worker 2026-10-09)
+- [x] gated-relay upload proven end to end (token-issuance-ui 2026-10-01; paywall e2e through the Worker 2026-10-09)
 - [x] consume record persisted and reused by every gated-relay client (shared `createGatedAccess`)
 - [x] interrupted uploads never pay twice within a live session — F7, `d1bb9cc`; a reload between register and upload is the accepted residual (register is never resumed)
 - [x] stored resume state validated — F8, `d1bb9cc`
@@ -1172,7 +1172,7 @@ historical until a maintainer re-runs `vitest --coverage`.
 - **Supply chain & release integrity:** SHA-pinned actions; OIDC provenance (verified for 0.0.27 and 0.0.28);
   peer ranges declared and checked by `npm ls --all` in CI and publish (F9, resolved); weekly grouped
   Dependabot. Since 0.0.28 the integration harness is pinned by commit and digest (F17, proven by the green run of 2026-10-10) and a red localnet run blocks a release and opens an issue (F24).
-- **Wire-format coupling:** the access proof is shared with both nft-gate gateways (nft-gate-client
+- **Wire-format coupling:** the access proof is shared with both nft-gate gateways (access-gate-gateway-client
   vectors; `nft-gate:access:v2`, audience-bound), and the `409 redeemed` / `leased` / consume-403 contract
   with the Workers gateway. The tip transaction is
   SDK-owned.
@@ -1194,9 +1194,9 @@ historical until a maintainer re-runs `vitest --coverage`.
   | --- | --- |
   | F9 | `access-gate-client-audit.md` F9 (SDK as a dependency, not a peer; this package now declares peers) |
   | F19 | `access-gate-sui-audit.md` F34 / OQ17 (nonce binding; decision recorded in F19) |
-  | F18 | `seal-client-audit.md` F18 (declarations; `SECURITY.md` not shipped) |
-  | F11 | `seal-client-audit.md` F6 — seal-ui stores through `./http` |
-  | F23 | `walrus-ui-audit.md` and `token-deployer-ui-audit.md` (owned-blob listings consumed there) |
+  | F18 | `sealed-storage-client-audit.md` F18 (declarations; `SECURITY.md` not shipped) |
+  | F11 | `sealed-storage-client-audit.md` F6 — sealed-storage-ui stores through `./http` |
+  | F23 | `walrus-storage-ui-audit.md` and `token-issuance-ui-audit.md` (owned-blob listings consumed there) |
 
 ---
 
@@ -1278,7 +1278,7 @@ the harness is localnet-only and no real-chain job exists.
   with a refreshed token, bounded; (b) persisting registered-not-uploaded state was not adopted
   (register is never resumed across loads); the token is minted after register.
 - **OQ2** *(DECIDED 2026-10-08, 0.0.26)* `@mysten/sui` and `@mysten/walrus` are peer dependencies (F9).
-- **OQ3** *(DECIDED 2026-10-10, 0.0.28; F18)* Ship `.d.ts` declarations like nft-gate-client and
+- **OQ3** *(DECIDED 2026-10-10, 0.0.28; F18)* Ship `.d.ts` declarations like access-gate-gateway-client and
   access-gate-client: fleet decision D34 says every SDK package does, and the pre-v0.2 policy allows
   it in a patch.
 - **OQ4** *(DECIDED 2026-10-08, 0.0.26)* `./http` does not offer a verified read; `SECURITY.md` and the
@@ -1310,7 +1310,7 @@ the harness is localnet-only and no real-chain job exists.
     (2026-10-03) + OPS (2026-09-30, localnet harness only).
   - **Measured:** vitest 81/81; coverage 90.36 / 85.01 / 93.18; tsc, eslint, audit (0) and shellcheck
     clean; `npm ls` invalid peer (F9); pack 13 files.
-  - **Cross-checked:** the gateway challenge TTL (300 s) and walrus-ui's existing-copy wiring.
+  - **Cross-checked:** the gateway challenge TTL (300 s) and walrus-storage-ui's existing-copy wiring.
   - **Not runnable here:** the localnet integration suite and live endpoints (no Docker testbed;
     egress blocked).
   - **IDs:** corpus IDs F2, F4 and F6 preserved from code citations. New: F7–F22; OQ1–OQ4.
@@ -1337,7 +1337,7 @@ the harness is localnet-only and no real-chain job exists.
     `npm ls --all` exit 0; pack 14 files; registry shows 0.0.27 with provenance. Not run here:
     shellcheck (not installed), coverage (plugin not installed; 2026-10-03 figures kept as historical),
     the localnet suite (no Docker; the maintainer's run PASSED 2026-10-09).
-  - **Corrected stale facts:** versions (0.0.27, nft-gate-client 0.0.16, sui 2.35.0, walrus 1.2.34),
+  - **Corrected stale facts:** versions (0.0.27, access-gate-gateway-client 0.0.16, sui 2.35.0, walrus 1.2.34),
     line and file counts, peer/`.npmrc` state, sui CLI 1.81.0, consumers' ranges, Node 24.
 - 2026-10-10 — fix wave on the 0.0.27 tree, producing 0.0.28 (commit `cdafcd3`; nothing tagged or published).
   - **Resolved:** F14, F15 (attributes and the conflict vocabulary), F16, F18 (OQ3 decided by D34), F24
@@ -1352,11 +1352,11 @@ the harness is localnet-only and no real-chain job exists.
     harness pins, the new integration assertions and the Actions wiring of the alert and the gate are
     unproven until a dispatched or nightly run and the next tag; coverage (plugin not installed).
   - **Process:** the audit gate script of other repos (`audit-gate.mjs`) does not exist in this repo.
-  - **Consumers to bump** after release: walrus-ui, walrus-relay, token-deployer-ui, seal-ui and docs
-    (`@meddleware/walrus-client@^0.0.28`; test fixtures that build `OwnedBlob` literals need `startEpoch`
+  - **Consumers to bump** after release: walrus-storage-ui, walrus-relay, token-issuance-ui, sealed-storage-ui and docs
+    (`@meddleware/walrus-storage-client@^0.0.28`; test fixtures that build `OwnedBlob` literals need `startEpoch`
     and `deletable`).
-- 2026-10-18 — released (0.0.28), consumers bumped (walrus-ui, walrus-relay, token-deployer-ui, seal-ui, docs, dev: all
-  `^0.0.28`). `npm view` shows `@meddleware/walrus-client` 0.0.28 as `latest`, published 2026-10-10T19:25Z, with
+- 2026-10-18 — released (0.0.28), consumers bumped (walrus-storage-ui, walrus-relay, token-issuance-ui, sealed-storage-ui, docs, dev: all
+  `^0.0.28`). `npm view` shows `@meddleware/walrus-storage-client` 0.0.28 as `latest`, published 2026-10-10T19:25Z, with
   SLSA v1 provenance (`dist.attestations`); tag `v0.0.28` = `7a26fd7`. **Localnet gate:** the release passed the new
   `localnet-gate` (publish run 38079631377 green, job "Localnet suite is not red"), against a green `Integration (localnet)`
   run on the release commit (run 38079428163, dispatched 2026-10-10T19:20Z, success); the scheduled nightlies of
@@ -1388,10 +1388,10 @@ the harness is localnet-only and no real-chain job exists.
 
 - 2026-10-22 (audit close-out, 0.0.30) — release status, a new finding and the read-integrity decision.
   - **Releases:** 0.0.29 (`v0.0.29` = `9e3d204`) and 0.0.30 (`v0.0.30` = `ed1257f`) are released; npm `latest` is 0.0.30. 0.0.29 carries the lower tip ceiling (5_000_000 MIST, cost model D57) and the localnet platform-config id export; its earlier "commit pending" is now the tag.
-  - **F26 (new, Medium, RESOLVED):** the gated flow passed a synthetic `expiresAt: 0` to `buildAccessProof`; `nft-gate-client` 0.0.18 refuses an expired challenge before the wallet prompt (nft-gate-client F14), so every gated upload would have failed on the dependency bump.
+  - **F26 (new, Medium, RESOLVED):** the gated flow passed a synthetic `expiresAt: 0` to `buildAccessProof`; `access-gate-gateway-client` 0.0.18 refuses an expired challenge before the wallet prompt (access-gate-gateway-client F14), so every gated upload would have failed on the dependency bump.
     0.0.30 passes the gateway's real expiry; regression test in `tests/flow.test.ts`. The localnet nightly harness was fixed the same day (F25, already recorded). Counts: **18 RESOLVED, 1 MITIGATED (F13), 1 ADJUDICATED, 3 Positive** (23 findings).
   - **Decided 2026-10-22:** F11 / OQ4 — no verification of aggregator bytes in the SDK: AEAD covers sealed content, and anything needing integrity re-derives the blob id. Section D box "read integrity for content the apps depend on" ticked. The mainnet relay/aggregator/publisher and tip/WAL/expiry boxes stay open (maintainer-only, mainnet).
-  - Verified: npm `latest` of this package and of `nft-gate-client` read with `npm view` (0.0.30, 0.0.18); tags read with git. Not re-run: the unit suite (the audit's last measured count is the 0.0.30 commit's own CI).
+  - Verified: npm `latest` of this package and of `access-gate-gateway-client` read with `npm view` (0.0.30, 0.0.18); tags read with git. Not re-run: the unit suite (the audit's last measured count is the 0.0.30 commit's own CI).
 
 ## Pre-save consistency checklist (this pass)
 
@@ -1407,3 +1407,4 @@ the harness is localnet-only and no real-chain job exists.
 - [x] 2026-10-22: F25 added to the summary counts, Section D and the log; F13 notes the dependency.
 - [x] 2026-10-10 fix wave: dispositions, executive summary counts, Section D, OQ3 and OQ5, C.1 counts and the log updated together; unticked D items are mainnet-blocked or maintainer-only, each named.
 - [x] 2026-10-22 (close-out): F26 added to the summary counts, the findings table, the executive summary and the log; Section D read-integrity box ticked; OQ4 confirmed.
+- 2026-10-24 — repository renamed from `walrus-client` to `walrus-storage-client` (workspace naming convention, `docs/architecture/ADR-0003-naming.md`): package, image, host and path names updated throughout. No finding, disposition or evidence changed.

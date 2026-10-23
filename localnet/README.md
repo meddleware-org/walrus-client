@@ -1,8 +1,8 @@
 # Walrus localnet e2e harness
 
 The single source of truth for a **local Sui + Walrus network** that the Walrus packages
-(`walrus-client`, `walrus-relay`, `walrus-ui`) run their integration/e2e suites against. Nothing here
-ships in the published `@meddleware/walrus-client` package — it's a dev/CI harness.
+(`walrus-storage-client`, `walrus-storage-kit`, `walrus-storage-ui`) run their integration/e2e suites against. Nothing here
+ships in the published `@meddleware/walrus-storage-client` package — it's a dev/CI harness.
 
 ## What it stands up
 
@@ -48,11 +48,11 @@ bash scripts/bootstrap-localnet.sh # no sudo — uses localnet/.sui, never ~/.su
 set -a && source .env.localnet && set +a       # export WALRUS_* for the suites
 
 # then, in each repo:
-cd ../ && WALRUS_LOCALNET=1 npm run test:integration          # walrus-client
-cd ../walrus-relay && WALRUS_LOCALNET=1 npm run test:integration
-cd ../walrus-ui    && npm run test && npm run test:e2e
+cd ../ && WALRUS_LOCALNET=1 npm run test:integration          # walrus-storage-client
+cd ../walrus-storage-kit && WALRUS_LOCALNET=1 npm run test:integration
+cd ../walrus-storage-ui    && npm run test && npm run test:e2e
 
-cd ../walrus-client/localnet && bash scripts/down.sh
+cd ../walrus-storage-client/localnet && bash scripts/down.sh
 ```
 
 ## `.env.localnet` contract

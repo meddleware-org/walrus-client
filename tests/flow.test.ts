@@ -1,7 +1,7 @@
 // Unit tests for the headless upload orchestrator and its resume conventions. A fake root module is
 // injected via `loadWalrusClient`, so no wasm, wallet or network is touched.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { GATEWAY_CONFLICT_CODES, decodeAccessProof } from '@meddleware/nft-gate-client'
+import { GATEWAY_CONFLICT_CODES, decodeAccessProof } from '@meddleware/access-gate-gateway-client'
 import { StorageNodeAPIError } from '@mysten/walrus'
 import {
   CONSUME_RESUME_MAX_AGE_MS,
@@ -412,7 +412,7 @@ describe('createGatedAccess', () => {
   })
 
   it('passes the gateway challenge expiry through, and never prompts the wallet on an expired challenge', async () => {
-    // Regression: the flow once built the proof with a synthetic expiresAt of 0, which nft-gate-client 0.0.18 refuses.
+    // Regression: the flow once built the proof with a synthetic expiresAt of 0, which access-gate-gateway-client 0.0.18 refuses.
     const fresh = ports(fakeStorage(), false)
     await expect(createGatedAccess(fresh).token()).resolves.toEqual(expect.any(String))
     const expired = ports(fakeStorage(), false)
@@ -527,7 +527,7 @@ describe('isRedeemedConflict', () => {
     expect(gatewayConflictCodeOf(conflict('leased'))).toBe('leased')
   })
 
-  it('knows exactly the codes nft-gate-client exports', () => {
+  it('knows exactly the codes access-gate-gateway-client exports', () => {
     for (const code of GATEWAY_CONFLICT_CODES) expect(gatewayConflictCodeOf(conflict(code))).toBe(code)
     expect(gatewayConflictCodeOf(StorageNodeAPIError.generate(409, { error: 'x', code: 'invented' }, undefined))).toBeNull()
   })

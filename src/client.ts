@@ -204,7 +204,7 @@ export function relayAuthFetch(
     const value = typeof token === 'function' ? token() : token
     if (!value || target.origin !== relayOrigin) return globalThis.fetch(url, init)
     if (target.protocol !== 'https:' && !isLoopbackHost(target.hostname)) {
-      throw new Error(`walrus-client: refusing to send auth token over non-https URL (${href})`)
+      throw new Error(`walrus-storage-client: refusing to send auth token over non-https URL (${href})`)
     }
     // A Request keeps its own headers (init.headers, when given, adds to or overrides them), so
     // passing `headers` below never drops what the caller built the Request with.

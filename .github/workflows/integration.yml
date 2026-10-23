@@ -14,14 +14,14 @@ permissions:
 
 jobs:
   localnet:
-    name: walrus-client localnet suite
+    name: walrus-storage-client localnet suite
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout walrus-client (into repos/walrus-client)
+      - name: Checkout walrus-storage-client (into repos/walrus-storage-client)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          path: repos/walrus-client
+          path: repos/walrus-storage-client
 
       - name: Checkout access-gate-sui (sibling, for the localnet gate deploy)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,26 +52,26 @@ jobs:
           # localnet env creation is deferred to bootstrap-localnet.sh (runs after the testbed is up)
 
       - name: Bring up the localnet testbed
-        working-directory: repos/walrus-client/localnet
+        working-directory: repos/walrus-storage-client/localnet
         run: bash scripts/up.sh
 
       - name: Bootstrap localnet (deploy + harvest + .env.localnet)
-        working-directory: repos/walrus-client/localnet
+        working-directory: repos/walrus-storage-client/localnet
         run: bash scripts/bootstrap-localnet.sh
 
       - name: Install deps
-        working-directory: repos/walrus-client
+        working-directory: repos/walrus-storage-client
         run: npm ci
 
       - name: Run localnet integration suite
-        working-directory: repos/walrus-client
+        working-directory: repos/walrus-storage-client
         run: |
           set -a && source localnet/.env.localnet && set +a
           npm run test:integration
 
       - name: Tear down
         if: always()
-        working-directory: repos/walrus-client/localnet
+        working-directory: repos/walrus-storage-client/localnet
         run: bash scripts/down.sh || true
 
   # A red nightly used to go unnoticed (0.0.26 shipped while the suite was red). On a scheduled run,

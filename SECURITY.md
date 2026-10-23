@@ -2,7 +2,7 @@
 
 ## Scope
 
-This policy covers security issues in the `@meddleware/walrus-client` package source (`src/**`) —
+This policy covers security issues in the `@meddleware/walrus-storage-client` package source (`src/**`) —
 the client factory, the upload-relay auth-token injection, the tip cap, blob upload/query/manage, and
 lifetime management.
 

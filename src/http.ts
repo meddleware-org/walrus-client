@@ -1,4 +1,4 @@
-// `@meddleware/walrus-client/http` — store and read blobs through a Walrus HTTP publisher and
+// `@meddleware/walrus-storage-client/http` — store and read blobs through a Walrus HTTP publisher and
 // aggregator. No wallet, no wasm, no `@mysten/walrus`: for opaque bytes (e.g. Seal ciphertext) where
 // the publisher pays for storage and sends the `Blob` object to the user.
 

@@ -19,7 +19,7 @@ import {
 } from '../../src/manage.js'
 import { fetchOwnedWalrusBlobs } from '../../src/query.js'
 
-describe.skipIf(!LOCALNET_READY)('walrus-client localnet blob lifecycle', () => {
+describe.skipIf(!LOCALNET_READY)('walrus-storage-client localnet blob lifecycle', () => {
   let client: ReturnType<typeof localnetWalrusClient>
   let signer: ReturnType<typeof localnetSigner>
   const payload = new TextEncoder().encode(`meddleware-localnet-${Date.now()}`)

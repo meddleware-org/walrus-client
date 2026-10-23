@@ -1,4 +1,4 @@
-# @meddleware/walrus-client
+# @meddleware/walrus-storage-client
 
 Walrus decentralised storage client and asset management utilities for Sui applications.
 
@@ -21,8 +21,8 @@ This package provides configuration, upload helpers, and lifetime management for
 ### Node.js (deployment script)
 
 ```typescript
-import { createWalrusClient, LONG_TERM_EPOCHS } from '@meddleware/walrus-client'
-import { uploadLocalFile } from '@meddleware/walrus-client/node'
+import { createWalrusClient, LONG_TERM_EPOCHS } from '@meddleware/walrus-storage-client'
+import { uploadLocalFile } from '@meddleware/walrus-storage-client/node'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519'
 import * as fs from 'node:fs'
 
@@ -47,7 +47,7 @@ console.log('Uploaded blob:', blobId)
 import walrusWasmUrl from '@mysten/walrus-wasm/web/walrus_wasm_bg.wasm?url'
 
 // In a composable or component
-import { createWalrusClient, createUploadFlow } from '@meddleware/walrus-client'
+import { createWalrusClient, createUploadFlow } from '@meddleware/walrus-storage-client'
 
 const client = createWalrusClient({ network: 'testnet', wasmUrl: walrusWasmUrl })
 
@@ -97,7 +97,7 @@ Core upload function (stores a quilt). Works in Node.js and browser.
 
 **`uploadLocalFile(client, filePath, identifier, signer, options?): Promise<UploadResult>`**
 
-Node.js only (import from `@meddleware/walrus-client/node`). Reads a file from disk and uploads it.
+Node.js only (import from `@meddleware/walrus-storage-client/node`). Reads a file from disk and uploads it.
 
 **`createUploadFlow(client, contents, identifier, options?): WriteFilesFlow`**
 
@@ -168,10 +168,10 @@ Enumerate all Walrus blobs owned by an address (resolves the Blob struct type dy
 When the upload relay is protected by an `nft-gate` auth gateway, the caller must present a wallet-signed access proof. Use `createRelayAccessToken` to produce the Bearer token:
 
 ```typescript
-import { createRelayAccessToken, createWalrusClient } from '@meddleware/walrus-client'
+import { createRelayAccessToken, createWalrusClient } from '@meddleware/walrus-storage-client'
 
 const token = await createRelayAccessToken({
-  relayHost: 'https://sui-walrus-relay-testnet.meddleware.co.uk',
+  relayHost: 'https://sui-walrus-storage-relay-testnet.meddleware.co.uk',
   address: walletAddress,
   gateId, // the Gate the relay guards (0x + 64 lower-case hex)
   network: 'testnet',
@@ -184,14 +184,14 @@ const client = createWalrusClient({
 })
 ```
 
-### Upload orchestrator (`@meddleware/walrus-client/flow`)
+### Upload orchestrator (`@meddleware/walrus-storage-client/flow`)
 
 `runBlobUpload` runs the upload an app shows the user: encode → existing-copy precheck → register →
 upload → certify. It reports structured progress (`UploadProgress`) as it goes. The subpath never
 imports the package root statically, so the wasm client stays out of an app's eager bundle.
 
 ```typescript
-import { consumeStorageKey, createGatedAccess, runBlobUpload } from '@meddleware/walrus-client/flow'
+import { consumeStorageKey, createGatedAccess, runBlobUpload } from '@meddleware/walrus-storage-client/flow'
 import { buildConsumeTx } from '@meddleware/access-gate-client'
 
 const access = createGatedAccess({
@@ -239,13 +239,13 @@ const { blobId, url } = await runBlobUpload({
   `clearPendingCertify` keep an uploaded-but-uncertified blob's certificate, so certify can be
   finished later.
 
-### HTTP publisher and aggregator (`@meddleware/walrus-client/http`)
+### HTTP publisher and aggregator (`@meddleware/walrus-storage-client/http`)
 
 For opaque bytes such as Seal ciphertext, a publisher can store the blob and send the `Blob` object
 to the user. No wallet, wasm or `@mysten/walrus` is needed.
 
 ```typescript
-import { storeBlobViaPublisher, readBlob } from '@meddleware/walrus-client/http'
+import { storeBlobViaPublisher, readBlob } from '@meddleware/walrus-storage-client/http'
 
 const { blobId, kind, endEpoch } = await storeBlobViaPublisher(bytes, { publisher, epochs: 5, sendObjectTo: address, maxBytes })
 // kind === 'alreadyCertified': the publisher created NO Blob object for you; it lives until endEpoch.

@@ -6,7 +6,7 @@ set -euo pipefail
 
 # ── paths ─────────────────────────────────────────────────────────────────────
 LN_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LN_ROOT="$(cd "${LN_SCRIPTS_DIR}/.." && pwd)"          # …/walrus-client/localnet
+LN_ROOT="$(cd "${LN_SCRIPTS_DIR}/.." && pwd)"          # …/walrus-storage-client/localnet
 LN_UPSTREAM="${LN_ROOT}/.walrus-upstream"               # cloned MystenLabs/walrus checkout
 LN_GENERATED="${LN_ROOT}/generated"                     # harvested configs (gitignored)
 LN_ENV_FILE="${LN_ROOT}/.env.localnet"                  # the contract every suite consumes

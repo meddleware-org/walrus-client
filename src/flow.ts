@@ -1,4 +1,4 @@
-// `@meddleware/walrus-client/flow` — the headless blob-upload orchestrator shared by the apps
+// `@meddleware/walrus-storage-client/flow` — the headless blob-upload orchestrator shared by the apps
 // (encode → [precheck] → register → upload → certify), with single-use relay access and the
 // resume conventions around it.
 //
@@ -13,8 +13,8 @@
 // gateway error never costs a second paid registration; the thrown error then carries `uploadRetry`.
 // Only the single-use consume digest is resumable across loads: it is a permanent on-chain token,
 // redeemed by the gateway only when an upload succeeds.
-import { GATEWAY_STATUS, buildAccessProof, isTransactionDigest, parseGatewayError } from '@meddleware/nft-gate-client'
-import type { GatewayConflictCode, PersonalMessageSigner, SuiNetwork } from '@meddleware/nft-gate-client'
+import { GATEWAY_STATUS, buildAccessProof, isTransactionDigest, parseGatewayError } from '@meddleware/access-gate-gateway-client'
+import type { GatewayConflictCode, PersonalMessageSigner, SuiNetwork } from '@meddleware/access-gate-gateway-client'
 import type { ClientWithCoreApi } from '@mysten/sui/client'
 import { fetchRelayChallenge } from './access.js'
 import { assertEpochs } from './limits.js'
@@ -92,7 +92,7 @@ export function getCertifyRetry<R>(err: unknown): (() => Promise<R>) | null {
 /**
  * The gateway's conflict code (`redeemed` or `leased`) carried by `err`, anywhere in its `cause`
  * chain: an error with `status` 409 whose `error` is the gateway's JSON body (what the SDK's
- * upload-relay client attaches), read through nft-gate-client's `parseGatewayError`, so only a code
+ * upload-relay client attaches), read through access-gate-gateway-client's `parseGatewayError`, so only a code
  * that package knows is ever returned. Message text is never inspected: both gateways always send
  * the code.
  */
