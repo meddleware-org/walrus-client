@@ -425,7 +425,7 @@ describe('createGatedAccess', () => {
     const p = ports(fakeStorage())
     await createGatedAccess(p).token()
     expect(new TextDecoder().decode(p.sign.mock.calls[0]![0])).toBe(
-      `nft-gate:access:v2\norigin:https://relay.example\ngate:${GATE}\nnetwork:testnet\nnonce:nonce-xyz\nconsume:${DIGEST}`,
+      `access-gate-gateway:access:v3\norigin:https://relay.example\ngate:${GATE}\nnetwork:testnet\nnonce:nonce-xyz\nconsume:${DIGEST}`,
     )
   })
 

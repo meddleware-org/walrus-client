@@ -1,7 +1,7 @@
 /**
  * NFT-gated relay access helpers.
  *
- * When the Meddleware upload relay runs behind an `nft-gate` auth gateway, an upload must
+ * When the Meddleware upload relay runs behind the `access-gate-gateway`, an upload must
  * carry a wallet-signed **access proof** proving the caller holds the required access NFT.
  * These helpers build that proof; the resulting token is passed to
  * `createWalrusClient({ uploadRelayAuthToken })`, which threads it as the relay
@@ -35,7 +35,7 @@ export type AccessProofInput = AccessProof
 export type { PersonalMessageSigner, SuiNetwork }
 
 /**
- * The exact bytes the wallet signs: the audience-bound `nft-gate:access:v2` message (gateway origin,
+ * The exact bytes the wallet signs: the audience-bound `access-gate-gateway:access:v3` message (gateway origin,
  * gate, network, nonce and, for single-use gateways, the consume digest). MUST match the gateway's
  * derivation.
  */

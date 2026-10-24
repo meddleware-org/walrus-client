@@ -21,7 +21,7 @@ describe('relay access proof', () => {
   it('derives the audience-bound v2 message', () => {
     expect(
       text(personalMessage({ origin: 'https://relay.example', gateId: GATE, network: 'testnet', nonce: 'abc' })),
-    ).toBe(`nft-gate:access:v2\norigin:https://relay.example\ngate:${GATE}\nnetwork:testnet\nnonce:abc`)
+    ).toBe(`access-gate-gateway:access:v3\norigin:https://relay.example\ngate:${GATE}\nnetwork:testnet\nnonce:abc`)
   })
 
   it('encodes a proof token without consumeDigest by default', () => {
@@ -53,7 +53,7 @@ describe('relay access proof', () => {
     )
     const sign = vi.fn(async (message: Uint8Array) => {
       expect(text(message)).toBe(
-        `nft-gate:access:v2\norigin:https://relay.example\ngate:${GATE}\nnetwork:testnet\nnonce:the-nonce\nconsume:${DIGEST}`,
+        `access-gate-gateway:access:v3\norigin:https://relay.example\ngate:${GATE}\nnetwork:testnet\nnonce:the-nonce\nconsume:${DIGEST}`,
       )
       return { signature: 'U0lHNjQ=' }
     })

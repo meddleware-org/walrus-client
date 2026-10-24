@@ -1,7 +1,7 @@
 // Public API barrel for @meddleware/walrus-storage-client. Ships TypeScript source directly (the only build
 // output is the `.d.ts` declarations in dist/). Grouped by concern: client factory + network config
 // (client.ts), upload flows (upload.ts), blob lifetime/attribute management (manage.ts), owned-blob queries (query.ts), and
-// nft-gate relay access proofs (access.ts). Re-exports WalrusFile/RetryableWalrusClientError from
+// access-gate-gateway relay access proofs (access.ts). Re-exports WalrusFile/RetryableWalrusClientError from
 // @mysten/walrus for convenience.
 export {
   createWalrusClient,

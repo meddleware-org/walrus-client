@@ -1408,3 +1408,4 @@ the harness is localnet-only and no real-chain job exists.
 - [x] 2026-10-10 fix wave: dispositions, executive summary counts, Section D, OQ3 and OQ5, C.1 counts and the log updated together; unticked D items are mainnet-blocked or maintainer-only, each named.
 - [x] 2026-10-22 (close-out): F26 added to the summary counts, the findings table, the executive summary and the log; Section D read-integrity box ticked; OQ4 confirmed.
 - 2026-10-24 — repository renamed from `walrus-client` to `walrus-storage-client` (workspace naming convention, `docs/architecture/ADR-0003-naming.md`): package, image, host and path names updated throughout. No finding, disposition or evidence changed.
+- 2026-10-24 — identifier alignment (`docs/architecture/ADR-0004-identifier-alignment.md`): proofs sign `access-gate-gateway:access:v3` through access-gate-gateway-client 0.0.21; 132 tests pass. No finding changed.
